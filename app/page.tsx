@@ -25,6 +25,7 @@ import {
 
 type ActiveEffect = GameEffect & { uiDelay: number };
 type TransitionStage = "waiting" | "round" | "player" | "winner" | null;
+type HealthPulse = { kind: "damage" | "heal"; amount: number; sequence: number };
 
 const roleLabel: Record<Role, string> = {
   Sheriff: "CẢNH SÁT TRƯỞNG",
@@ -67,6 +68,7 @@ export default function Home() {
   const [rolling, setRolling] = useState(false);
   const [botRolling, setBotRolling] = useState(false);
   const [activeEffects, setActiveEffects] = useState<ActiveEffect[]>([]);
+  const [healthPulses, setHealthPulses] = useState<Record<string, HealthPulse>>({});
   const [transitionStage, setTransitionStage] = useState<TransitionStage>("waiting");
   const [readyTurn, setReadyTurn] = useState(0);
   const [introSerial, setIntroSerial] = useState(0);
@@ -79,6 +81,8 @@ export default function Home() {
   const lastWinner = useRef<string | null>(null);
   const effectQueueEnd = useRef(0);
   const skillQueueEnd = useRef(0);
+  const previousHp = useRef<Record<string, number>>({});
+  const healthPulseSequence = useRef(0);
   const turnReady = readyTurn === game.turnNumber && transitionStage === null;
   const selectable = useMemo(() => new Set(turnReady ? selectableTargetIds(game) : []), [game, turnReady]);
   const skillEffects = useMemo(() => activeEffects.filter((effect) => effect.kind === "skill"), [activeEffects]);
@@ -99,6 +103,27 @@ export default function Home() {
   const displayedDice = shownResult?.dice ?? game.dice;
   const resultPlayer = shownResult ? game.players.find((player) => player.id === shownResult.playerId) : null;
   const diceMoving = rolling || botRolling;
+
+  useEffect(() => {
+    const nextHp: Record<string, number> = {};
+    const changes: Record<string, HealthPulse> = {};
+    for (const player of game.players) {
+      nextHp[player.id] = player.hp;
+      const previous = previousHp.current[player.id];
+      if (previous === undefined || previous === player.hp) continue;
+      changes[player.id] = {
+        kind: player.hp < previous ? "damage" : "heal",
+        amount: Math.abs(player.hp - previous),
+        sequence: ++healthPulseSequence.current,
+      };
+    }
+    previousHp.current = nextHp;
+    if (!Object.keys(changes).length) return;
+    const timer = window.setTimeout(() => {
+      setHealthPulses((currentPulses) => ({ ...currentPulses, ...changes }));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [game.players]);
 
   const rollWithAnimation = useCallback(() => {
     if (rolling || !turnReady || !canRoll(game)) return;
@@ -229,6 +254,8 @@ export default function Home() {
     lastWinner.current = null;
     effectQueueEnd.current = 0;
     skillQueueEnd.current = 0;
+    previousHp.current = {};
+    setHealthPulses({});
     setActiveEffects([]);
     setGame(newGame(nextCount));
     setIntroSerial((serial) => serial + 1);
@@ -282,10 +309,11 @@ export default function Home() {
             const [x, y] = seatLayout[game.playerCount][index];
             const showRole = player.human || player.revealed || game.phase === "over";
             const targetable = selectable.has(player.id);
+            const healthPulse = healthPulses[player.id];
             return (
               <button
                 type="button"
-                className={`seat ${player.human ? "human-player" : ""} ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
+                className={`seat ${player.human ? "human-player" : ""} ${player.role === "Sheriff" ? "sheriff-player" : ""} ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
                 style={{
                   "--x": `${x}%`,
                   "--y": `${y}%`,
@@ -295,11 +323,16 @@ export default function Home() {
                 disabled={!targetable}
                 aria-label={`${player.name}, ${player.character.name}, ${player.hp} máu, ${player.arrows} mũi tên${targetable ? ", chọn làm mục tiêu" : ""}`}
               >
-                <span className={`role-card ${showRole ? roleClass(player.role) : "hidden-role"}`}>
-                  <small>VAI TRÒ</small>
-                  <strong>{showRole ? roleLabel[player.role] : "?"}</strong>
-                </span>
                 <span className="character-card">
+                  <span
+                    className={`role-photo ${showRole ? roleClass(player.role) : "hidden-role"}`}
+                    aria-label={showRole ? `Vai trò: ${roleLabel[player.role]}` : "Vai trò đang được giữ kín"}
+                  >
+                    {!showRole && <b aria-hidden="true">?</b>}
+                  </span>
+                  {player.role === "Sheriff" && (
+                    <span className="sheriff-badge" aria-label="Cảnh sát trưởng" title="Cảnh sát trưởng">★</span>
+                  )}
                   <span className="portrait-window">
                     <img
                       className="character-strip"
@@ -317,8 +350,18 @@ export default function Home() {
                 </span>
                 <span className="tokens">
                   <span className="seat-owner">{player.human ? "BẠN" : player.name.toUpperCase()}</span>
-                  <span className="bullet-stack" aria-label={`${player.hp} trên ${player.maxHp} máu`}>
-                    {Array.from({ length: player.hp }, (_, i) => <i className="bullet-token" aria-hidden="true" key={i} />)}
+                  <span
+                    className={healthPulse ? `bullet-stack hp-${healthPulse.kind}` : "bullet-stack"}
+                    aria-label={`${player.hp} trên ${player.maxHp} máu`}
+                    key={`${player.id}-hp-${healthPulse?.sequence ?? 0}`}
+                  >
+                    {Array.from({ length: player.hp }, (_, i) => (
+                      <i
+                        className={healthPulse?.kind === "heal" && i >= player.hp - healthPulse.amount ? "bullet-token new-bullet" : "bullet-token"}
+                        aria-hidden="true"
+                        key={i}
+                      />
+                    ))}
                   </span>
                   <span className={`arrow-stack ${player.arrows ? "" : "empty"}`}>
                     {player.arrows ? Array.from({ length: player.arrows }, (_, i) => <i key={i}>➹</i>) : <i>➹ 0</i>}

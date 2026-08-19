@@ -22,6 +22,9 @@ test("renders the playable western table", async () => {
   assert.match(html, /class="character-strip" src="\/characters\//);
   assert.match(html, /class="character-copy"/);
   assert.match(html, /class="bullet-stack"/);
+  assert.match(html, /class="role-photo sheriff"/);
+  assert.match(html, /class="sheriff-badge"/);
+  assert.doesNotMatch(html, /class="role-card/);
   assert.doesNotMatch(html, /class="felt-lines"/);
   assert.match(html, /VÁN MỚI/);
   assert.match(html, /VAI CỦA BẠN/);

@@ -122,11 +122,11 @@ button:disabled { cursor: default; }
   z-index: 4;
   left: var(--x);
   top: var(--y);
-  width: 560px;
-  min-height: 174px;
+  width: 600px;
+  min-height: 184px;
   display: grid;
-  grid-template-columns: 72px 488px;
-  grid-template-rows: 132px 42px;
+  grid-template-columns: 600px;
+  grid-template-rows: 142px 42px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -138,10 +138,10 @@ button:disabled { cursor: default; }
 .seat.human-player::after {
   position: absolute;
   z-index: 10;
-  top: -6px;
+  top: -29px;
   right: -6px;
   bottom: calc(var(--token-row) - 6px);
-  left: -6px;
+  left: -25px;
   border: 4px solid #4cdb70;
   border-radius: 13px;
   box-shadow: 0 0 0 2px #10391fcc, 0 0 26px #42e36f99;
@@ -152,50 +152,65 @@ button:disabled { cursor: default; }
 .seat:disabled { opacity: 1; }
 .seat.active { z-index: 7; }
 .seat.targetable { z-index: 8; cursor: crosshair; }
-.seat.targetable .character-card, .seat.targetable .role-card { border-color: #ff5546; box-shadow: 0 0 0 3px #e53127, 0 0 28px #ff493e; animation: target-pulse 1.1s infinite alternate; }
-.seat.active:not(.targetable) .character-card, .seat.active:not(.targetable) .role-card { border-color: #fff0ad; box-shadow: 0 0 0 3px #e5a728, 0 0 24px #ffc43d; }
-
-.role-card {
-  grid-row: 1;
-  width: 72px;
-  height: 132px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  overflow: hidden;
-  color: #1b100a;
-  border: 3px solid #e8d8b3;
-  border-radius: 8px 0 0 8px;
-  background: linear-gradient(145deg, #d9bf8c, #735337);
-}
-.role-card small { font-size: 8px; letter-spacing: 1px; }
-.role-card strong {
-  max-height: 88px;
-  font: 900 10px/1.05 "Segoe UI", Arial, sans-serif;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  letter-spacing: .7px;
-}
-.role-card.sheriff { background: linear-gradient(145deg, #ffd45f, #8b4d0b); }
-.role-card.deputy { background: linear-gradient(145deg, #f2c752, #a85a13); }
-.role-card.outlaw { color: #fff0da; background: linear-gradient(145deg, #d23d30, #5c1712); }
-.role-card.renegade { background: linear-gradient(145deg, #ded0bf, #6d5b4d); }
-.role-card.hidden-role strong { font-size: 30px; writing-mode: horizontal-tb; transform: none; }
+.seat.sheriff-player .character-card { border-color: #ffd65e; box-shadow: 0 0 0 3px #9c650e, 0 0 30px #ffc739aa; }
+.seat.targetable .character-card { border-color: #ff5546; box-shadow: 0 0 0 3px #e53127, 0 0 28px #ff493e; animation: target-pulse 1.1s infinite alternate; }
+.seat.active:not(.targetable) .character-card { border-color: #fff0ad; box-shadow: 0 0 0 3px #e5a728, 0 0 24px #ffc43d; }
 
 .character-card {
   position: relative;
-  grid-column: 2;
+  grid-column: 1;
   display: flex;
-  overflow: hidden;
+  overflow: visible;
   color: #2b190e;
   border: 3px solid #e8d8b3;
-  border-left: 0;
-  border-radius: 0 8px 8px 0;
+  border-radius: 10px;
   background: linear-gradient(105deg, #f4e5bd, #e1c88e);
 }
-.portrait-window { height: 100%; aspect-ratio: 1; flex: none; overflow: hidden; border-right: 2px solid #9c7446; }
+.role-photo {
+  position: absolute;
+  z-index: 4;
+  left: -18px;
+  top: -22px;
+  width: 62px;
+  height: 88px;
+  overflow: hidden;
+  border: 3px solid #ead49b;
+  border-radius: 7px;
+  background-image: url("/role-cards.jpg");
+  background-repeat: no-repeat;
+  background-size: 200% 200%;
+  box-shadow: 0 6px 12px #000b, 0 0 0 2px #5c341b;
+  transform: rotate(-3deg);
+}
+.role-photo.sheriff { background-position: 0 0; }
+.role-photo.renegade { background-position: 100% 0; }
+.role-photo.outlaw { background-position: 0 100%; }
+.role-photo.deputy { background-position: 100% 100%; }
+.role-photo.hidden-role {
+  display: grid;
+  place-items: center;
+  color: #eed17b;
+  background: radial-gradient(circle, #4e2319, #160b08 70%);
+}
+.role-photo.hidden-role b { font: 900 30px/1 Georgia, serif; text-shadow: 0 2px #000; }
+.sheriff-badge {
+  position: absolute;
+  z-index: 5;
+  right: 10px;
+  top: 9px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: #412307;
+  border: 2px solid #fff0a3;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe884 0 35%, #d88d16 70%);
+  box-shadow: 0 3px 0 #75420b, 0 0 18px #ffd14f;
+  font-size: 23px;
+  line-height: 1;
+}
+.portrait-window { height: 100%; aspect-ratio: 1; flex: none; overflow: hidden; border-right: 2px solid #9c7446; border-radius: 7px 0 0 7px; }
 .character-strip { width: auto; max-width: none; height: 100%; display: block; user-select: none; }
 .character-copy { min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 13px 15px; }
 .character-copy strong { color: #2d190d; font: 900 16px/1.05 Georgia, "Times New Roman", serif; letter-spacing: .15px; }
@@ -214,7 +229,7 @@ button:disabled { cursor: default; }
 }
 
 .tokens {
-  grid-column: 2;
+  grid-column: 1;
   display: flex;
   gap: 9px;
   align-items: center;
@@ -224,7 +239,9 @@ button:disabled { cursor: default; }
   background: #130a06ed;
   border-radius: 0 0 8px 8px;
 }
-.bullet-stack { min-width: 112px; height: 28px; display: flex; align-items: center; padding-left: 3px; }
+.bullet-stack { min-width: 112px; height: 28px; display: flex; align-items: center; padding-left: 3px; border-radius: 7px; }
+.bullet-stack.hp-damage { animation: health-damage .95s ease .48s both; }
+.bullet-stack.hp-heal { animation: health-heal 1s ease .48s both; }
 .bullet-token {
   position: relative;
   width: 14px;
@@ -238,6 +255,8 @@ button:disabled { cursor: default; }
   transform: rotate(-2deg);
 }
 .bullet-token:nth-child(even) { transform: rotate(2deg) translateY(1px); }
+.bullet-stack.hp-damage .bullet-token { animation: bullet-damage .95s ease .48s both; }
+.bullet-stack.hp-heal .bullet-token.new-bullet { animation: bullet-added 1s cubic-bezier(.2, .9, .25, 1.3) .48s both; }
 .bullet-token::after { position: absolute; right: 2px; bottom: 3px; left: 2px; height: 2px; border-radius: 1px; background: #33200f; content: ""; }
 .arrow-stack { min-width: 0; display: flex; align-items: center; padding-left: 5px; color: #f0c75e; }
 .arrow-stack i { width: 14px; height: 22px; display: inline-grid; place-items: center; margin-left: -4px; border-radius: 9px; background: #e5bd67; color: #173725; font-size: 12px; font-style: normal; font-weight: 900; box-shadow: 0 0 0 1px #624316; }
@@ -387,13 +406,10 @@ button:disabled { cursor: default; }
 .player-turn-toast strong { margin-top: 8px; font-size: clamp(24px, 3vw, 38px); letter-spacing: .12em; }
 .player-turn-toast span { margin-top: 4px; color: #d8c39a; font-size: 12px; font-weight: 900; letter-spacing: .1em; }
 
-.players-6 .seat { --token-row: 40px; width: 510px; min-height: 156px; grid-template-columns: 66px 444px; grid-template-rows: 116px 40px; }
-.players-6 .role-card { width: 66px; height: 116px; }
+.players-6 .seat { --token-row: 40px; width: 540px; min-height: 164px; grid-template-columns: 540px; grid-template-rows: 124px 40px; }
 .players-6 .character-copy strong { font-size: 15px; }
 .players-6 .character-copy span { font-size: 13px; }
-.players-7 .seat, .players-8 .seat { --token-row: 38px; width: 460px; min-height: 142px; grid-template-columns: 60px 400px; grid-template-rows: 104px 38px; }
-.players-7 .role-card, .players-8 .role-card { width: 60px; height: 104px; }
-.players-7 .role-card strong, .players-8 .role-card strong { max-height: 66px; font-size: 9px; }
+.players-7 .seat, .players-8 .seat { --token-row: 38px; width: 480px; min-height: 148px; grid-template-columns: 480px; grid-template-rows: 110px 38px; }
 .players-7 .character-copy, .players-8 .character-copy { padding: 9px 11px; }
 .players-7 .character-copy strong, .players-8 .character-copy strong { font-size: 14px; }
 .players-7 .character-copy span, .players-8 .character-copy span { margin-top: 5px; font-size: 12px; line-height: 1.22; }
@@ -600,21 +616,36 @@ button:disabled { cursor: default; }
   100% { opacity: 0; }
 }
 @keyframes skill-button-pulse { to { filter: brightness(1.22); transform: translateY(-2px); } }
+@keyframes health-damage {
+  0%, 100% { background: transparent; filter: none; }
+  16%, 48% { background: #bd211f99; filter: drop-shadow(0 0 11px #ff2b24); }
+  32%, 64% { background: #59100dbb; filter: drop-shadow(0 0 4px #ff2b24); }
+}
+@keyframes bullet-damage {
+  0%, 100% { filter: none; }
+  18%, 50% { filter: saturate(2) brightness(1.2) drop-shadow(0 0 5px #ff241c); }
+  34%, 66% { filter: saturate(1.5) brightness(.72); }
+}
+@keyframes health-heal {
+  0%, 100% { background: transparent; filter: none; }
+  18%, 68% { background: #1a8f4599; filter: drop-shadow(0 0 12px #43ef79); }
+}
+@keyframes bullet-added {
+  0% { opacity: 0; transform: translateY(-18px) scale(.35) rotate(-12deg); filter: brightness(2) drop-shadow(0 0 8px #44ef7c); }
+  45% { opacity: 1; transform: translateY(-3px) scale(1.35) rotate(4deg); filter: brightness(1.5) drop-shadow(0 0 9px #44ef7c); }
+  100% { opacity: 1; filter: none; }
+}
 
 @media (max-width: 1500px) {
-  .seat { --token-row: 38px; width: 430px; min-height: 138px; grid-template-columns: 60px 370px; grid-template-rows: 100px 38px; }
-  .role-card { width: 60px; height: 100px; }
-  .role-card strong { max-height: 64px; font-size: 9px; }
+  .seat { --token-row: 38px; width: 470px; min-height: 146px; grid-template-columns: 470px; grid-template-rows: 108px 38px; }
+  .role-photo { width: 54px; height: 77px; left: -15px; top: -18px; }
   .character-copy { padding: 9px 11px; }
   .character-copy strong { font-size: 14px; }
   .character-copy span { margin-top: 5px; font-size: 12.5px; line-height: 1.2; }
-  .players-6 .seat { --token-row: 36px; width: 400px; min-height: 126px; grid-template-columns: 56px 344px; grid-template-rows: 90px 36px; }
-  .players-6 .role-card { width: 56px; height: 90px; }
+  .players-6 .seat { --token-row: 36px; width: 420px; min-height: 132px; grid-template-columns: 420px; grid-template-rows: 96px 36px; }
   .players-6 .character-copy strong { font-size: 13px; }
   .players-6 .character-copy span { font-size: 11.5px; }
-  .players-7 .seat, .players-8 .seat { --token-row: 35px; width: 370px; min-height: 117px; grid-template-columns: 52px 318px; grid-template-rows: 82px 35px; }
-  .players-7 .role-card, .players-8 .role-card { width: 52px; height: 82px; }
-  .players-7 .role-card strong, .players-8 .role-card strong { max-height: 51px; font-size: 8px; }
+  .players-7 .seat, .players-8 .seat { --token-row: 35px; width: 390px; min-height: 123px; grid-template-columns: 390px; grid-template-rows: 88px 35px; }
   .players-7 .character-copy, .players-8 .character-copy { padding: 6px 8px; }
   .players-7 .character-copy strong, .players-8 .character-copy strong { font-size: 12px; }
   .players-7 .character-copy span, .players-8 .character-copy span { margin-top: 3px; font-size: 10.8px; line-height: 1.18; }
@@ -627,9 +658,7 @@ button:disabled { cursor: default; }
   .round span, .legend { display: none; }
   .table { width: 1320px; }
   .turn-panel { width: 390px; }
-  .seat { --token-row: 36px; width: 374px; grid-template-columns: 54px 320px; grid-template-rows: 84px 36px; }
-  .role-card { width: 54px; height: 84px; }
-  .role-card strong { max-height: 54px; }
+  .seat { --token-row: 36px; width: 400px; grid-template-columns: 400px; grid-template-rows: 92px 36px; }
   .character-copy { padding: 6px 8px; }
   .character-copy strong { font-size: 11px; }
   .character-copy span { margin-top: 3px; font-size: 9.5px; }
