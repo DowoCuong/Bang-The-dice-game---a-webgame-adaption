@@ -66,12 +66,14 @@ export default function Home() {
   const [rolling, setRolling] = useState(false);
   const [activeEffects, setActiveEffects] = useState<ActiveEffect[]>([]);
   const [turnIntro, setTurnIntro] = useState(true);
+  const [roundIntro, setRoundIntro] = useState(true);
   const [introSerial, setIntroSerial] = useState(0);
   const rollTimer = useRef<number | null>(null);
   const turnTimer = useRef<number | null>(null);
   const effectTimers = useRef<number[]>([]);
   const lastEffectId = useRef(0);
   const lastEffectTurn = useRef(0);
+  const lastIntroRound = useRef(0);
   const skillQueueEnd = useRef(0);
   const selectable = useMemo(() => new Set(selectableTargetIds(game)), [game]);
   const skillEffects = useMemo(() => activeEffects.filter((effect) => effect.kind === "skill"), [activeEffects]);
@@ -105,6 +107,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    setRoundIntro(game.round !== lastIntroRound.current);
+    lastIntroRound.current = game.round;
     setTurnIntro(true);
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     turnTimer.current = window.setTimeout(() => {
@@ -173,6 +177,7 @@ export default function Home() {
     effectTimers.current = [];
     lastEffectId.current = 0;
     lastEffectTurn.current = 0;
+    lastIntroRound.current = 0;
     skillQueueEnd.current = 0;
     setActiveEffects([]);
     setGame(newGame(nextCount));
@@ -392,9 +397,9 @@ export default function Home() {
       </div>
 
       {turnIntro && (
-        <div className="turn-intro" role="status" aria-live="assertive">
-          <span>LƯỢT {game.turnNumber}</span>
-          <strong>{current.name.toUpperCase()}</strong>
+        <div className={`turn-intro ${roundIntro ? "round-start" : "player-turn"}`} role="status" aria-live="assertive">
+          {roundIntro && <span>VÒNG {game.round}</span>}
+          <strong>TỚI LƯỢT {current.name.toUpperCase()}</strong>
           <small>{current.character.name.toUpperCase()}</small>
         </div>
       )}

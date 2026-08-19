@@ -241,7 +241,7 @@ test("table notifications remain visible for about three seconds", () => {
   assert.match(page, /skillQueueEnd\.current = startsAt \+ 3100/);
 });
 
-test("turns are numbered and the full-screen turn intro lasts two seconds", () => {
+test("round and player-turn announcements are separated and last two seconds", () => {
   const game = newGame(4, middle);
   game.turn = 0;
   game.phase = "roll";
@@ -252,7 +252,9 @@ test("turns are numbered and the full-screen turn intro lasts two seconds", () =
 
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(page, /LƯỢT \{game\.turnNumber\}/);
+  assert.match(page, /VÒNG \{game\.round\}/);
+  assert.match(page, /TỚI LƯỢT \{current\.name\.toUpperCase\(\)\}/);
+  assert.doesNotMatch(page, /LƯỢT \{game\.turnNumber\}/);
   assert.match(styles, /animation: turn-intro 2s/);
   assert.match(styles, /\.effect-impact-row[\s\S]*display: flex/);
 });
