@@ -474,7 +474,9 @@ export default function Home() {
                     disabled={rolling || !turnReady || game.phase !== "roll" || game.rolls === 0}
                     aria-label={`Xúc xắc ${index + 1}: ${face ? faceInfo[face].label : "chưa tung"}${held ? ", đang giữ" : ""}`}
                   >
-                    <span>{face ? faceInfo[face].symbol : "?"}</span>
+                    {face === "dynamite"
+                      ? <img className="die-face-image" src="/dice/dynamite-tnt.png" alt="" draggable={false} />
+                      : <span>{face ? faceInfo[face].symbol : "?"}</span>}
                     {held && <small>GIỮ</small>}
                   </button>
                 );
@@ -571,7 +573,12 @@ export default function Home() {
       <footer className="controlbar" id="game-controlbar">
         <button className="status-chip" onClick={() => setLogOpen(true)}><span>●</span> {game.players.filter((p) => p.alive).length} TAY SÚNG CÒN LẠI</button>
         <div className="legend">
-          {Object.entries(faceInfo).map(([face, info]) => <span key={face}><i className={face}>{info.symbol}</i>{info.label}</span>)}
+          {Object.entries(faceInfo).map(([face, info]) => (
+            <span key={face}>
+              <i className={face}>{face === "dynamite" ? <img src="/dice/dynamite-tnt.png" alt="" /> : info.symbol}</i>
+              {info.label}
+            </span>
+          ))}
         </div>
         <button className="secondary" onClick={() => setLogOpen(true)}>NHẬT KÝ</button>
       </footer>
