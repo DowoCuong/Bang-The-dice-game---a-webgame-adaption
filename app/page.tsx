@@ -109,7 +109,6 @@ export default function Home() {
           className={`table players-${game.playerCount}`}
           aria-label={`Bàn chơi ${game.playerCount} người`}
         >
-          <div className="felt-lines" />
           {game.players.map((player, index) => {
             const [x, y] = seatLayout[game.playerCount][index];
             const showRole = player.human || player.revealed || game.phase === "over";
@@ -132,14 +131,20 @@ export default function Home() {
                   <strong>{showRole ? roleLabel[player.role] : "?"}</strong>
                 </span>
                 <span className="character-card">
-                  <img
-                    className="character-strip"
-                    src={`/characters/${player.character.id}.webp`}
-                    alt=""
-                    width="1664"
-                    height="436"
-                    draggable="false"
-                  />
+                  <span className="portrait-window">
+                    <img
+                      className="character-strip"
+                      src={`/characters/${player.character.id}.webp`}
+                      alt=""
+                      width="1664"
+                      height="436"
+                      draggable="false"
+                    />
+                  </span>
+                  <span className="character-copy">
+                    <strong>{player.character.name.toUpperCase()} ({player.character.life})</strong>
+                    <span>{player.character.ability}</span>
+                  </span>
                 </span>
                 <span className="tokens">
                   <span className="seat-owner">{player.human ? "BẠN" : player.name.toUpperCase()}</span>
