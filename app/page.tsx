@@ -32,6 +32,15 @@ const roleGoal: Record<Role, string> = {
   Renegade: "Trở thành người sống sót cuối cùng.",
 };
 
+const seatLayout: Record<number, Array<[number, number]>> = {
+  3: [[50, 13], [75, 77], [25, 77]],
+  4: [[50, 13], [83, 50], [50, 87], [17, 50]],
+  5: [[50, 13], [83, 38], [71, 82], [29, 82], [17, 38]],
+  6: [[50, 13], [83, 30], [83, 70], [50, 87], [17, 70], [17, 30]],
+  7: [[50, 11], [78, 23], [85, 55], [70, 84], [30, 84], [15, 55], [22, 23]],
+  8: [[35, 11], [65, 11], [84, 30], [84, 70], [65, 89], [35, 89], [16, 70], [16, 30]],
+};
+
 function roleClass(role: Role) {
   return role.toLowerCase();
 }
@@ -50,8 +59,6 @@ export default function Home() {
   const selectable = useMemo(() => new Set(selectableTargetIds(game)), [game]);
   const current = game.players[game.turn];
   const human = game.players.find((player) => player.human)!;
-  const radiusX = game.playerCount >= 7 ? 430 : game.playerCount >= 5 ? 400 : 330;
-  const radiusY = game.playerCount >= 7 ? 275 : game.playerCount >= 5 ? 255 : 225;
 
   useEffect(() => {
     if (game.phase !== "bot") return;
@@ -104,8 +111,7 @@ export default function Home() {
         >
           <div className="felt-lines" />
           {game.players.map((player, index) => {
-            const angle = -90 + (360 / game.playerCount) * index;
-            const radians = angle * Math.PI / 180;
+            const [x, y] = seatLayout[game.playerCount][index];
             const showRole = player.human || player.revealed || game.phase === "over";
             const targetable = selectable.has(player.id);
             return (
@@ -113,8 +119,8 @@ export default function Home() {
                 type="button"
                 className={`seat ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
                 style={{
-                  "--x": `${Math.cos(radians) * radiusX}px`,
-                  "--y": `${Math.sin(radians) * radiusY}px`,
+                  "--x": `${x}%`,
+                  "--y": `${y}%`,
                 } as CSSProperties}
                 key={player.id}
                 onClick={() => targetable && setGame((state) => chooseTarget(state, player.id))}
@@ -126,15 +132,20 @@ export default function Home() {
                   <strong>{showRole ? roleLabel[player.role] : "?"}</strong>
                 </span>
                 <span className="character-card">
-                  <span className={`portrait portrait-${player.character.id}`}><i>♠</i>{player.character.name.charAt(0)}</span>
-                  <span className="character-copy">
-                    <small>{player.human ? "BẠN" : player.name.toUpperCase()}</small>
-                    <strong>{player.character.name.toUpperCase()}</strong>
-                    <span>{player.character.ability}</span>
-                  </span>
+                  <img
+                    className="character-strip"
+                    src={`/characters/${player.character.id}.webp`}
+                    alt=""
+                    width="1664"
+                    height="436"
+                    draggable="false"
+                  />
                 </span>
                 <span className="tokens">
-                  <span className="life">♥ {player.hp}/{player.maxHp}</span>
+                  <span className="seat-owner">{player.human ? "BẠN" : player.name.toUpperCase()}</span>
+                  <span className="bullet-stack" aria-label={`${player.hp} trên ${player.maxHp} máu`}>
+                    {Array.from({ length: player.hp }, (_, i) => <i className="bullet-token" aria-hidden="true" key={i} />)}
+                  </span>
                   <span className={`arrow-stack ${player.arrows ? "" : "empty"}`}>
                     {player.arrows ? Array.from({ length: player.arrows }, (_, i) => <i key={i}>➹</i>) : <i>➹ 0</i>}
                   </span>

@@ -15,14 +15,31 @@ button:focus-visible, select:focus-visible { outline: 3px solid #ffe08b; outline
 button:disabled { cursor: default; }
 
 .game-shell {
+  position: relative;
+  isolation: isolate;
   height: 100vh;
   display: grid;
   grid-template-rows: 76px 34px minmax(0, 1fr) 66px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 45%, transparent 0 38%, #090402b8 78%),
-    repeating-linear-gradient(88deg, #35180d 0 56px, #472113 58px 62px, #291109 64px 120px);
+  background: #090604;
   font-family: inherit;
+}
+.game-shell::before,
+.game-shell::after {
+  position: absolute;
+  z-index: -2;
+  inset: -18px;
+  content: "";
+  pointer-events: none;
+}
+.game-shell::before {
+  background: url("/game-background.png") center 42% / cover no-repeat;
+  filter: blur(11px) brightness(.42) saturate(.78);
+  transform: scale(1.035);
+}
+.game-shell::after {
+  z-index: -1;
+  background: radial-gradient(circle at 50% 44%, #08050310 0 35%, #070302c9 88%);
 }
 
 .topbar, .controlbar {
@@ -91,20 +108,20 @@ button:disabled { cursor: default; }
 .table-scroll { min-height: 0; overflow: auto; scrollbar-color: #9e672d #140a06; }
 .table {
   position: relative;
-  width: max(100%, 1120px);
-  height: max(100%, 780px);
-  max-width: 1500px;
+  width: max(100%, 1280px);
+  height: max(100%, 540px);
+  max-width: 1700px;
   margin: 0 auto;
 }
 .felt-lines {
   position: absolute;
-  inset: 7% 10%;
+  inset: 2.5% 3.5%;
   border: 2px solid #e5bd6750;
-  border-radius: 48%;
+  border-radius: 44%;
   box-shadow: inset 0 0 100px #000d, 0 0 0 15px #24100680, 0 20px 60px #0009;
   background:
     radial-gradient(circle at 30% 30%, #ffffff09 0 2px, transparent 3px),
-    radial-gradient(ellipse, #27382d 0, #15231c 54%, #0b130e 100%);
+    radial-gradient(ellipse, #27382de8 0, #15231ce8 54%, #0b130ef2 100%);
   background-size: 18px 18px, auto;
 }
 
@@ -113,18 +130,18 @@ button:disabled { cursor: default; }
   --y: 0px;
   position: absolute;
   z-index: 4;
-  left: 50%;
-  top: 50%;
-  width: 258px;
-  min-height: 140px;
+  left: var(--x);
+  top: var(--y);
+  width: 430px;
+  min-height: 135px;
   display: grid;
-  grid-template-columns: 58px 1fr;
-  grid-template-rows: 112px 30px;
+  grid-template-columns: 60px 370px;
+  grid-template-rows: 97px 38px;
   padding: 0;
   border: 0;
   background: transparent;
   text-align: left;
-  transform: translate(-50%, -50%) translate(var(--x), var(--y));
+  transform: translate(-50%, -50%);
   filter: drop-shadow(0 10px 10px #000c);
   transition: filter .18s ease, transform .18s ease, opacity .18s ease;
 }
@@ -136,8 +153,8 @@ button:disabled { cursor: default; }
 
 .role-card {
   grid-row: 1;
-  width: 58px;
-  height: 112px;
+  width: 60px;
+  height: 97px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -151,7 +168,7 @@ button:disabled { cursor: default; }
 }
 .role-card small { font-size: 7px; letter-spacing: 1px; }
 .role-card strong {
-  max-height: 74px;
+  max-height: 61px;
   font: 900 9px/1.05 "Segoe UI", Arial, sans-serif;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
@@ -164,54 +181,69 @@ button:disabled { cursor: default; }
 .role-card.hidden-role strong { font-size: 30px; writing-mode: horizontal-tb; transform: none; }
 
 .character-card {
+  position: relative;
   grid-column: 2;
-  display: flex;
   overflow: hidden;
   color: #2b190e;
   border: 3px solid #e8d8b3;
   border-left: 0;
   border-radius: 0 8px 8px 0;
-  background:
-    linear-gradient(92deg, transparent 52%, #fff3d02b 53% 54%, transparent 55%),
-    linear-gradient(120deg, #c78b3a, #f0d8a7 55%, #b56f2b);
+  background: #e8d6a8;
 }
-.portrait {
-  position: relative;
-  width: 64px;
+.character-strip { width: 100%; height: 100%; display: block; object-fit: cover; user-select: none; }
+.seat-owner {
   flex: none;
-  display: grid;
-  place-items: center;
-  color: #f2d599;
-  background: linear-gradient(160deg, #24150f, #6e2e18);
-  border-right: 2px solid #64351e;
-  font: 900 38px Georgia, serif;
-  text-shadow: 2px 2px #000;
+  padding: 3px 6px;
+  color: #fff2c7;
+  border: 1px solid #f0cf7c;
+  border-radius: 4px;
+  background: #3a150dd9;
+  box-shadow: 0 2px 5px #0008;
+  font-size: 7px;
+  font-weight: 1000;
+  letter-spacing: .8px;
 }
-.portrait:nth-child(odd) { background: linear-gradient(160deg, #151b20, #63422a); }
-.portrait i { position: absolute; left: 6px; top: 5px; color: #da3c2c; font-size: 14px; font-style: normal; }
-.portrait-rose, .portrait-janet, .portrait-suzy { background: linear-gradient(160deg, #33170f, #8e2e26); }
-.character-copy { min-width: 0; display: flex; flex-direction: column; padding: 9px 8px; }
-.character-copy small { color: #8d251d; font-size: 8px; font-weight: 900; }
-.character-copy strong { margin: 4px 0 6px; overflow: hidden; font: 900 14px/1.05 Georgia, serif; text-overflow: ellipsis; white-space: nowrap; }
-.character-copy span { display: -webkit-box; overflow: hidden; font: italic 9px/1.28 "Segoe UI", Arial, sans-serif; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
 
 .tokens {
   grid-column: 2;
   display: flex;
-  gap: 5px;
+  gap: 9px;
   align-items: center;
   min-width: 0;
-  padding: 3px 6px;
+  padding: 5px 8px;
   color: white;
   background: #130a06ed;
   border-radius: 0 0 8px 8px;
 }
-.life { min-width: 55px; height: 23px; display: inline-grid; place-items: center; padding: 0 7px; border-radius: 12px; background: #9d261e; font-size: 11px; font-weight: 900; }
+.bullet-stack { min-width: 112px; height: 28px; display: flex; align-items: center; padding-left: 3px; }
+.bullet-token {
+  position: relative;
+  width: 14px;
+  height: 26px;
+  flex: none;
+  margin-left: -3px;
+  border: 1px solid #5a300c;
+  border-radius: 7px 7px 3px 3px;
+  background: linear-gradient(90deg, #8d4b0d, #f4ce68 48%, #9c5b18);
+  box-shadow: inset 0 -5px 0 #704014, 0 1px 2px #000b;
+  transform: rotate(-2deg);
+}
+.bullet-token:nth-child(even) { transform: rotate(2deg) translateY(1px); }
+.bullet-token::after { position: absolute; right: 2px; bottom: 3px; left: 2px; height: 2px; border-radius: 1px; background: #33200f; content: ""; }
 .arrow-stack { min-width: 0; display: flex; align-items: center; padding-left: 5px; color: #f0c75e; }
 .arrow-stack i { width: 14px; height: 22px; display: inline-grid; place-items: center; margin-left: -4px; border-radius: 9px; background: #e5bd67; color: #173725; font-size: 12px; font-style: normal; font-weight: 900; box-shadow: 0 0 0 1px #624316; }
 .arrow-stack.empty i { width: auto; padding: 0 7px; color: #8c7c62; background: #33271d; }
 .eliminated { position: absolute; inset: 37px 12px auto; z-index: 5; padding: 8px; color: white; background: #7d1712ed; border: 2px solid #f4c9a1; text-align: center; font: 900 14px/1 "Segoe UI", Arial, sans-serif; letter-spacing: 1px; transform: rotate(-6deg); }
 .seat.dead { filter: grayscale(1) drop-shadow(0 6px 7px #000b); opacity: .7; }
+
+.players-6 .seat { width: 390px; min-height: 124px; grid-template-columns: 56px 334px; grid-template-rows: 88px 36px; }
+.players-6 .role-card { width: 56px; height: 88px; }
+.players-7 .seat, .players-8 .seat { width: 360px; min-height: 116px; grid-template-columns: 52px 308px; grid-template-rows: 81px 35px; }
+.players-7 .role-card, .players-8 .role-card { width: 52px; height: 81px; }
+.players-7 .role-card strong, .players-8 .role-card strong { max-height: 50px; font-size: 8px; }
+.players-7 .tokens, .players-8 .tokens { gap: 5px; padding-inline: 5px; }
+.players-7 .bullet-stack, .players-8 .bullet-stack { min-width: 96px; }
+.players-7 .bullet-token, .players-8 .bullet-token { width: 12px; height: 24px; }
 
 .turn-panel {
   position: absolute;
@@ -320,12 +352,12 @@ button:disabled { cursor: default; }
   .topbar { padding: 8px 14px; }
   .brand span { font-size: 30px; }
   .round span, .legend { display: none; }
-  .table { width: 1020px; }
+  .table { width: 1320px; }
   .turn-panel { width: 390px; }
-  .seat { width: 225px; grid-template-columns: 50px 1fr; }
-  .role-card { width: 50px; }
-  .portrait { width: 54px; }
-  .character-copy span { -webkit-line-clamp: 3; }
+  .seat { width: 374px; grid-template-columns: 54px 320px; grid-template-rows: 84px 36px; }
+  .role-card { width: 54px; height: 84px; }
+  .role-card strong { max-height: 54px; }
+  .bullet-stack { min-width: 105px; }
   .controlbar { min-height: 58px; padding: 8px 14px; }
 }
 
@@ -335,7 +367,7 @@ button:disabled { cursor: default; }
   .round b { padding: 0; border: 0; font-size: 12px; }
   .identity-strip { flex-wrap: wrap; gap: 5px 8px; text-align: center; line-height: 1.2; }
   .identity-strip em { flex-basis: 100%; }
-  .table { width: 940px; height: 760px; }
+  .table { width: 1280px; height: 780px; }
   .turn-panel { width: 330px; }
   .dice-tray { gap: 6px; padding: 12px; }
   .die { width: 48px; font-size: 24px; }
