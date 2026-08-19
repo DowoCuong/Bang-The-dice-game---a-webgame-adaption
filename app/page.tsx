@@ -64,6 +64,8 @@ export default function Home() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [topPanelOpen, setTopPanelOpen] = useState(false);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
   const [nextCount, setNextCount] = useState(5);
   const [rolling, setRolling] = useState(false);
   const [botRolling, setBotRolling] = useState(false);
@@ -279,8 +281,8 @@ export default function Home() {
   };
 
   return (
-    <main className="game-shell">
-      <header className="topbar">
+    <main className={`game-shell ${topPanelOpen ? "" : "top-collapsed"} ${bottomPanelOpen ? "" : "bottom-collapsed"}`}>
+      <header className="topbar" id="game-topbar">
         <button className="brand" onClick={() => setSetupOpen(true)} aria-label="Mở thiết lập ván mới">
           <span>BANG!</span><small>THE DICE GAME · WEB EDITION</small>
         </button>
@@ -294,11 +296,22 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="identity-strip">
+      <div className="identity-strip" id="game-identity">
         <span>VAI CỦA BẠN</span>
         <strong className={roleClass(human.role)}>{roleLabel[human.role]}</strong>
         <em>{game.playerCount === 3 ? "Luật 3 người: mọi vai trò đều công khai." : roleGoal[human.role]}</em>
       </div>
+
+      <button
+        type="button"
+        className="panel-toggle top-panel-toggle"
+        aria-controls="game-topbar game-identity"
+        aria-expanded={topPanelOpen}
+        onClick={() => setTopPanelOpen((open) => !open)}
+      >
+        <span aria-hidden="true">{topPanelOpen ? "▲" : "▼"}</span>
+        <b>{topPanelOpen ? "THU GỌN" : "THÔNG TIN VÁN"}</b>
+      </button>
 
       <div className="table-scroll">
         <section
@@ -516,7 +529,18 @@ export default function Home() {
         </div>
       )}
 
-      <footer className="controlbar">
+      <button
+        type="button"
+        className="panel-toggle bottom-panel-toggle"
+        aria-controls="game-controlbar"
+        aria-expanded={bottomPanelOpen}
+        onClick={() => setBottomPanelOpen((open) => !open)}
+      >
+        <span aria-hidden="true">{bottomPanelOpen ? "▼" : "▲"}</span>
+        <b>{bottomPanelOpen ? "THU GỌN" : "CÔNG CỤ"}</b>
+      </button>
+
+      <footer className="controlbar" id="game-controlbar">
         <button className="status-chip" onClick={() => setLogOpen(true)}><span>●</span> {game.players.filter((p) => p.alive).length} TAY SÚNG CÒN LẠI</button>
         <div className="legend">
           {Object.entries(faceInfo).map(([face, info]) => <span key={face}><i className={face}>{info.symbol}</i>{info.label}</span>)}
