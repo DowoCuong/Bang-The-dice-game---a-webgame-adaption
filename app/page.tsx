@@ -65,10 +65,24 @@ export default function Home() {
   const [nextCount, setNextCount] = useState(5);
   const [rolling, setRolling] = useState(false);
   const [activeEffects, setActiveEffects] = useState<ActiveEffect[]>([]);
+  const [turnIntro, setTurnIntro] = useState(true);
+  const [introSerial, setIntroSerial] = useState(0);
   const rollTimer = useRef<number | null>(null);
+  const turnTimer = useRef<number | null>(null);
   const effectTimers = useRef<number[]>([]);
   const lastEffectId = useRef(0);
+  const lastEffectTurn = useRef(0);
+  const skillQueueEnd = useRef(0);
   const selectable = useMemo(() => new Set(selectableTargetIds(game)), [game]);
+  const skillEffects = useMemo(() => activeEffects.filter((effect) => effect.kind === "skill"), [activeEffects]);
+  const impactGroups = useMemo(() => {
+    const groups = new Map<string, ActiveEffect[]>();
+    for (const effect of activeEffects) {
+      if (!effect.targetId || effect.amount === undefined) continue;
+      groups.set(effect.targetId, [...(groups.get(effect.targetId) ?? []), effect]);
+    }
+    return [...groups.values()];
+  }, [activeEffects]);
   const current = game.players[game.turn];
   const human = game.players.find((player) => player.human)!;
   const diceMoving = rolling || game.phase === "bot";
@@ -86,23 +100,44 @@ export default function Home() {
 
   useEffect(() => () => {
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
+    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     effectTimers.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
   useEffect(() => {
+    setTurnIntro(true);
+    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
+    turnTimer.current = window.setTimeout(() => {
+      setTurnIntro(false);
+      turnTimer.current = null;
+    }, 2000);
+    return () => {
+      if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
+    };
+  }, [game.turnNumber, introSerial]);
+
+  useEffect(() => {
     if (game.effectSeq < lastEffectId.current) {
       lastEffectId.current = 0;
+      skillQueueEnd.current = 0;
       setActiveEffects([]);
     }
     const incoming = game.effects.filter((effect) => effect.id > lastEffectId.current);
+    const turnChanged = game.turnNumber !== lastEffectTurn.current;
+    lastEffectTurn.current = game.turnNumber;
     if (!incoming.length) return;
     lastEffectId.current = incoming.at(-1)!.id;
-    let uiDelay = 0;
+    const now = Date.now();
+    let uiDelay = turnChanged ? 2000 : 0;
     const staged = incoming.map((effect, index): ActiveEffect => {
       const previous = incoming[index - 1];
       const sameGatlingVolley = effect.kind === "gatling" && previous?.kind === "gatling" && effect.sourceId === previous.sourceId;
-      if (index > 0 && !sameGatlingVolley) uiDelay = Math.min(uiDelay + 140, 420);
-      return { ...effect, uiDelay };
+      const sameTargetBurst = !!effect.targetId && effect.targetId === previous?.targetId;
+      if (index > 0 && !sameGatlingVolley && !sameTargetBurst) uiDelay = Math.min(uiDelay + 140, (turnChanged ? 2000 : 0) + 420);
+      if (effect.kind !== "skill") return { ...effect, uiDelay };
+      const startsAt = Math.max(now + uiDelay, skillQueueEnd.current);
+      skillQueueEnd.current = startsAt + 3100;
+      return { ...effect, uiDelay: startsAt - now };
     });
     setActiveEffects((currentEffects) => [...currentEffects, ...staged]);
     staged.forEach((effect) => {
@@ -115,10 +150,10 @@ export default function Home() {
   }, [game.effects, game.effectSeq]);
 
   useEffect(() => {
-    if (game.phase !== "bot") return;
+    if (game.phase !== "bot" || turnIntro) return;
     const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 3600);
     return () => window.clearTimeout(timer);
-  }, [game.phase, game.turn]);
+  }, [game.phase, game.turn, turnIntro]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -137,8 +172,11 @@ export default function Home() {
     effectTimers.current.forEach((timer) => window.clearTimeout(timer));
     effectTimers.current = [];
     lastEffectId.current = 0;
+    lastEffectTurn.current = 0;
+    skillQueueEnd.current = 0;
     setActiveEffects([]);
     setGame(newGame(nextCount));
+    setIntroSerial((serial) => serial + 1);
     setSetupOpen(false);
     setLogOpen(false);
   };
@@ -237,7 +275,7 @@ export default function Home() {
           })}
 
           <div className="effect-layer" aria-live="assertive" aria-atomic="false">
-            {activeEffects.map((effect, index) => {
+            {activeEffects.filter((effect) => effect.kind !== "skill" && effect.targetId).map((effect) => {
               const [sourceX, sourceY] = effectPosition(effect.sourceId);
               const [targetX, targetY] = effectPosition(effect.targetId);
               const effectStyle = {
@@ -246,24 +284,36 @@ export default function Home() {
                 "--target-x": `${targetX}%`,
                 "--target-y": `${targetY}%`,
                 "--effect-delay": `${effect.uiDelay}ms`,
-                "--toast-offset": `${Math.min(activeEffects.slice(0, index).filter((item) => item.kind === "skill").length, 3) * 50}px`,
               } as CSSProperties;
               return (
                 <span className={`effect-event effect-${effect.kind}`} style={effectStyle} key={effect.id}>
-                  {effect.kind !== "skill" && effect.targetId && (
-                    <span className="effect-projectile" aria-hidden="true">
-                      {effect.kind === "shot" ? <img src="/effects/bull1.png" alt="" /> : effect.kind === "beer" ? "♨" : effect.kind === "gatling" ? "✹" : effect.kind === "arrow" ? "➹" : "▰"}
+                  <span className="effect-projectile" aria-hidden="true">
+                    {effect.kind === "shot" ? <img src="/effects/bull1.png" alt="" /> : effect.kind === "beer" ? "♨" : effect.kind === "gatling" ? "✹" : effect.kind === "arrow" ? "➹" : "▰"}
+                  </span>
+                </span>
+              );
+            })}
+            {impactGroups.map((effects) => {
+              const first = effects[0];
+              const [targetX, targetY] = effectPosition(first.targetId);
+              return (
+                <span
+                  className="effect-impact-row"
+                  style={{
+                    "--target-x": `${targetX}%`,
+                    "--target-y": `${targetY}%`,
+                  } as CSSProperties}
+                  key={first.targetId}
+                >
+                  {effects.map((effect) => (
+                    <span
+                      className={`effect-impact effect-impact-${effect.kind}`}
+                      style={{ "--effect-delay": `${effect.uiDelay}ms` } as CSSProperties}
+                      key={effect.id}
+                    >
+                      {effectImpact(effect)}
                     </span>
-                  )}
-                  {effect.targetId && effect.amount !== undefined && effect.kind !== "skill" && (
-                    <span className="effect-impact">{effectImpact(effect)}</span>
-                  )}
-                  {effect.kind === "skill" && (
-                    <span className="skill-toast"><small>KỸ NĂNG KÍCH HOẠT</small>{effect.label}</span>
-                  )}
-                  {effect.kind === "skill" && effect.targetId && (effect.amount ?? 0) > 0 && (
-                    <span className="effect-impact">+{effect.amount} HP</span>
-                  )}
+                  ))}
                 </span>
               );
             })}
@@ -325,6 +375,29 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      <div className="skill-layer" aria-live="assertive" aria-atomic="true">
+        {skillEffects.map((effect) => (
+          <span
+            className="skill-toast"
+            style={{
+              "--effect-delay": `${effect.uiDelay}ms`,
+              "--toast-offset": "0px",
+            } as CSSProperties}
+            key={effect.id}
+          >
+            <small>KỸ NĂNG KÍCH HOẠT</small><strong>{effect.label}</strong>
+          </span>
+        ))}
+      </div>
+
+      {turnIntro && (
+        <div className="turn-intro" role="status" aria-live="assertive">
+          <span>LƯỢT {game.turnNumber}</span>
+          <strong>{current.name.toUpperCase()}</strong>
+          <small>{current.character.name.toUpperCase()}</small>
+        </div>
+      )}
 
       <footer className="controlbar">
         <button className="status-chip" onClick={() => setLogOpen(true)}><span>●</span> {game.players.filter((p) => p.alive).length} TAY SÚNG CÒN LẠI</button>

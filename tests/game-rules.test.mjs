@@ -238,4 +238,21 @@ test("table notifications remain visible for about three seconds", () => {
   assert.match(page, /3700 \+ effect\.uiDelay/);
   assert.match(styles, /animation: effect-impact 3s/);
   assert.match(styles, /animation: skill-announcement 3s/);
+  assert.match(page, /skillQueueEnd\.current = startsAt \+ 3100/);
+});
+
+test("turns are numbered and the full-screen turn intro lasts two seconds", () => {
+  const game = newGame(4, middle);
+  game.turn = 0;
+  game.phase = "roll";
+  game.rolls = 1;
+  game.dice = ["dynamite", "dynamite", "arrow", "arrow", "arrow"];
+  const next = beginResolution(game);
+  assert.equal(next.turnNumber, 2);
+
+  const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(page, /LƯỢT \{game\.turnNumber\}/);
+  assert.match(styles, /animation: turn-intro 2s/);
+  assert.match(styles, /\.effect-impact-row[\s\S]*display: flex/);
 });

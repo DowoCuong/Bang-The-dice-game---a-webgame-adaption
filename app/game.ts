@@ -61,6 +61,7 @@ export type GameState = {
   players: Player[];
   playerCount: number;
   turn: number;
+  turnNumber: number;
   round: number;
   phase: Phase;
   dice: (Face | null)[];
@@ -164,6 +165,7 @@ export function newGame(playerCount = 5, rng = Math.random): GameState {
     players,
     playerCount: count,
     turn,
+    turnNumber: 1,
     round: 1,
     phase: players[turn].human ? "roll" : "bot",
     dice: Array(5).fill(null),
@@ -705,6 +707,7 @@ function finishTurn(game: GameState) {
   do turn = (turn + 1) % next.players.length; while (!next.players[turn].alive);
   if (turn <= next.turn) next.round += 1;
   next.turn = turn;
+  next.turnNumber += 1;
   next.dice = Array(5).fill(null);
   next.held = Array(5).fill(false);
   next.rolls = 0;
