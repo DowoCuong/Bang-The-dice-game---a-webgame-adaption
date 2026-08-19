@@ -417,6 +417,7 @@ export default function Home() {
             {activeEffects.filter((effect) => effect.kind === "target" && effect.targetId).map((effect) => {
               const [sourceX, sourceY] = effectPosition(effect.sourceId);
               const [targetX, targetY] = effectPosition(effect.targetId);
+              const selfBeer = effect.label === "beer" && effect.sourceId === effect.targetId;
               const markerId = `target-head-${effect.id}`;
               return (
                 <span
@@ -429,16 +430,22 @@ export default function Home() {
                   } as CSSProperties}
                   key={effect.id}
                 >
-                  <svg className="target-cue-beam" aria-hidden="true">
-                    <defs>
-                      <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
-                      </marker>
-                    </defs>
-                    <line className="target-beam-glow" x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} vectorEffect="non-scaling-stroke" />
-                    <line className="target-beam-core" x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} markerEnd={`url(#${markerId})`} vectorEffect="non-scaling-stroke" />
-                  </svg>
-                  <small>{effect.label === "beer" ? "BIA" : effect.label === "arrow" ? "MŨI TÊN" : effect.label === "bull2" ? "TẦM 2" : "TẦM 1"}</small>
+                  {selfBeer ? (
+                    <span className="self-beer-cue" aria-hidden="true">🍺</span>
+                  ) : (
+                    <>
+                      <svg className="target-cue-beam" aria-hidden="true">
+                        <defs>
+                          <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+                          </marker>
+                        </defs>
+                        <line className="target-beam-glow" x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} vectorEffect="non-scaling-stroke" />
+                        <line className="target-beam-core" x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} markerEnd={`url(#${markerId})`} vectorEffect="non-scaling-stroke" />
+                      </svg>
+                      <small>{effect.label === "beer" ? "BIA" : effect.label === "arrow" ? "MŨI TÊN" : effect.label === "bull2" ? "TẦM 2" : "TẦM 1"}</small>
+                    </>
+                  )}
                 </span>
               );
             })}
@@ -452,7 +459,8 @@ export default function Home() {
                 "--target-y": `${targetY}%`,
                 "--effect-delay": `${effect.uiDelay}ms`,
               } as CSSProperties;
-              const showTrail = !!effect.sourceId && ["shot", "beer", "gatling", "arrow"].includes(effect.kind);
+              const selfBeer = effect.kind === "beer" && effect.sourceId === effect.targetId;
+              const showTrail = !!effect.sourceId && !selfBeer && ["shot", "beer", "gatling", "arrow"].includes(effect.kind);
               const markerId = `effect-head-${effect.id}`;
               return (
                 <span className={`effect-event effect-${effect.kind}`} style={effectStyle} key={effect.id}>
@@ -467,7 +475,7 @@ export default function Home() {
                     </svg>
                   )}
                   <span className="effect-projectile" aria-hidden="true">
-                    {effect.kind === "shot" ? <img src="/effects/bull1.png" alt="" /> : effect.kind === "beer" ? "♨" : effect.kind === "gatling" ? "✹" : effect.kind === "arrow" ? "➹" : "▰"}
+                    {effect.kind === "shot" ? <img src="/effects/bull1.png" alt="" /> : effect.kind === "beer" ? "🍺" : effect.kind === "gatling" ? "✹" : effect.kind === "arrow" ? "➹" : "▰"}
                   </span>
                 </span>
               );

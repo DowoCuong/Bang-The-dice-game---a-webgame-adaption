@@ -220,10 +220,10 @@ button:disabled { cursor: default; }
 .role-photo {
   position: absolute;
   z-index: 4;
-  left: -18px;
-  top: -22px;
-  width: 62px;
-  height: 88px;
+  left: -24px;
+  top: -28px;
+  width: 76px;
+  height: 108px;
   overflow: hidden;
   border: 3px solid #ead49b;
   border-radius: 7px;
@@ -234,8 +234,8 @@ button:disabled { cursor: default; }
   transform: rotate(-3deg);
 }
 .role-photo.sheriff { background-position: 0 0; }
-.role-photo.renegade { background-position: 100% 0; }
-.role-photo.outlaw { background-position: 0 100%; }
+.role-photo.outlaw { background-position: 100% 0; }
+.role-photo.renegade { background-position: 0 100%; }
 .role-photo.deputy { background-position: 100% 100%; }
 .role-photo.hidden-role {
   display: grid;
@@ -348,6 +348,7 @@ button:disabled { cursor: default; }
   color: inherit;
   filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 12px currentColor);
 }
+.target-cue-beam { opacity: .34; }
 .target-beam-glow { stroke: currentColor; stroke-width: 18; stroke-linecap: round; opacity: .2; animation: target-beam-in .28s ease both; }
 .target-beam-core { stroke: currentColor; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 16 10; animation: target-beam-in .28s ease both, target-beam-flow .65s linear .28s infinite; }
 .target-cue.target-bull1, .target-cue.target-bull2 { color: #ff493d; }
@@ -364,6 +365,23 @@ button:disabled { cursor: default; }
 .effect-beer { color: #43e879; }
 .effect-gatling { color: #42bfff; }
 .effect-arrow { color: #f1c44f; }
+.self-beer-cue {
+  position: absolute;
+  z-index: 4;
+  left: var(--target-x);
+  top: var(--target-y);
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border: 3px solid #dcf7c1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff9cd 0 42%, #d68c20 45% 64%, #173d23 67% 100%);
+  box-shadow: 0 0 22px #43e879, 0 8px 20px #000b;
+  font: 34px/1 "Segoe UI Emoji", sans-serif;
+  transform: translate(-50%, -50%);
+  animation: self-beer-pulse .8s ease-in-out infinite alternate;
+}
 .target-cue small {
   position: absolute;
   z-index: 4;
@@ -486,7 +504,7 @@ button:disabled { cursor: default; }
 .winner-intro small { color: #d8c39a; font-size: clamp(11px, 1.5vw, 18px); font-weight: 1000; letter-spacing: .2em; }
 .winner-intro strong { margin-top: 12px; color: #e8ad39; font-size: clamp(20px, 3vw, 38px); letter-spacing: .16em; }
 .winner-intro span { max-width: 90vw; margin-top: 14px; font-size: clamp(42px, 7vw, 96px); font-weight: 1000; text-shadow: 0 5px 0 #701811, 0 0 42px #e9a62c88; }
-.transition-lock { position: fixed; z-index: 65; inset: 0; cursor: wait; }
+.transition-lock { position: fixed; z-index: 65; inset: 0; pointer-events: none; }
 .player-turn-toast {
   position: absolute;
   z-index: 55;
@@ -698,7 +716,8 @@ button:disabled { cursor: default; }
 @keyframes target-beam-in { from { opacity: 0; stroke-dashoffset: 45; } to { opacity: 1; stroke-dashoffset: 0; } }
 @keyframes target-beam-flow { to { stroke-dashoffset: -26; } }
 @keyframes target-cue-label-in { from { opacity: 0; transform: translate(-50%, 30px) scale(.7); } to { opacity: 1; transform: translate(-50%, 24px) scale(1); } }
-@keyframes effect-trail { 0% { opacity: 0; } 12%, 82% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes effect-trail { 0% { opacity: 0; } 12%, 82% { opacity: .42; } 100% { opacity: 0; } }
+@keyframes self-beer-pulse { to { filter: brightness(1.2); transform: translate(-50%, -50%) scale(1.08); } }
 @keyframes effect-impact {
   0% { opacity: 0; transform: translateY(45%) scale(.3) rotate(-8deg); }
   6% { opacity: 1; transform: translateY(-5%) scale(1.18) rotate(3deg); }
@@ -749,7 +768,7 @@ button:disabled { cursor: default; }
 
 @media (max-width: 1500px) {
   .seat { --token-row: 38px; width: 470px; min-height: 146px; grid-template-columns: 470px; grid-template-rows: 108px 38px; }
-  .role-photo { width: 54px; height: 77px; left: -15px; top: -18px; }
+  .role-photo { width: 66px; height: 94px; left: -20px; top: -23px; }
   .character-copy { padding: 9px 11px; }
   .character-copy strong { font-size: 14px; }
   .character-copy span { margin-top: 5px; font-size: 12.5px; line-height: 1.2; }

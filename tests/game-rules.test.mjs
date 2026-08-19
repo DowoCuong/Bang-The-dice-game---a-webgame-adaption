@@ -276,6 +276,9 @@ test("table notifications remain visible for about three seconds", () => {
   assert.match(page, /resolveChoices\(state\)\)\, 1000/);
   assert.match(styles, /\.target-cue\.target-beer \{ color: #43e879; \}/);
   assert.match(styles, /\.target-cue\.target-gatling \{ color: #42bfff; \}/);
+  assert.match(styles, /\.target-cue-beam \{ opacity: \.34; \}/);
+  assert.match(page, /const selfBeer = effect\.label === "beer" && effect\.sourceId === effect\.targetId/);
+  assert.match(page, /!!effect\.sourceId && !selfBeer/);
   assert.match(styles, /animation: effect-impact 3s/);
   assert.match(styles, /animation: skill-announcement 3s/);
   assert.match(page, /skillQueueEnd\.current = startsAt \+ 3100/);
@@ -306,4 +309,8 @@ test("round and player-turn announcements are separated and last two seconds", (
   assert.match(page, /player\.human \? "human-player"/);
   assert.match(styles, /\.seat\.human-player::after/);
   assert.match(styles, /\.effect-impact-row[\s\S]*display: flex/);
+  assert.match(styles, /\.role-photo\.outlaw \{ background-position: 100% 0; \}/);
+  assert.match(styles, /\.role-photo\.renegade \{ background-position: 0 100%; \}/);
+  assert.match(styles, /width: 76px;\s+height: 108px;/);
+  assert.match(styles, /\.transition-lock \{[^}]*pointer-events: none/);
 });
