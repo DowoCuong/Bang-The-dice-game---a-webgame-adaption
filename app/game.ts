@@ -27,8 +27,10 @@ export type Player = {
 type Pending = {
   shots: ("bull1" | "bull2")[];
   shotTargets: string[];
+  shotTargetEffectIds: number[];
   beers: number;
   beerTargets: string[];
+  beerTargetEffectIds: number[];
   gatlings: number;
   slabDoubleIndex: number | null;
   shotsResolved: boolean;
@@ -55,6 +57,7 @@ export type GameEffect = {
   targetId?: string;
   amount?: number;
   label?: string;
+  targetEffectId?: number;
 };
 
 export type TurnResult = {
@@ -143,6 +146,7 @@ function note(game: GameState, message: string) {
 function emitEffect(game: GameState, effect: Omit<GameEffect, "id">) {
   game.effectSeq += 1;
   game.effects = [...game.effects, { id: game.effectSeq, ...effect }].slice(-40);
+  return game.effectSeq;
 }
 
 function emitSkill(game: GameState, sourceId: string, label: string, targetId?: string, amount?: number) {
@@ -498,8 +502,10 @@ export function beginResolution(game: GameState) {
   next.pending = {
     shots,
     shotTargets: [],
+    shotTargetEffectIds: [],
     beers,
     beerTargets: [],
+    beerTargetEffectIds: [],
     gatlings,
     slabDoubleIndex: null,
     shotsResolved: false,
@@ -566,12 +572,13 @@ export function chooseTarget(game: GameState, targetId: string, deferResolution 
   const next = clone(game);
   if (next.phase === "sid") {
     const sid = next.players[next.turn];
-    emitEffect(next, { kind: "target", sourceId: sid.id, targetId, label: "beer" });
+    const targetEffectId = emitEffect(next, { kind: "target", sourceId: sid.id, targetId, label: "beer" });
     heal(next, targetId, 1, "Sid Ketchum đầu lượt", {
       kind: "skill",
       sourceId: sid.id,
       targetId,
       label: "SID KETCHUM • HỒI 1 MÁU ĐẦU LƯỢT",
+      targetEffectId,
     });
     next.phase = sid.human ? "roll" : "bot";
     return next;
@@ -580,12 +587,12 @@ export function chooseTarget(game: GameState, targetId: string, deferResolution 
   if (next.phase === "kit") {
     const target = next.players.find((player) => player.id === targetId)!;
     const kit = next.players[next.turn];
-    emitEffect(next, { kind: "target", sourceId: kit.id, targetId, label: "arrow" });
+    const targetEffectId = emitEffect(next, { kind: "target", sourceId: kit.id, targetId, label: "arrow" });
     target.arrows -= 1;
     next.arrowSupply += 1;
     next.pending.kitRemaining -= 1;
     emitSkill(next, kit.id, "KIT CARLSON • BỎ 1 MŨI TÊN", target.id);
-    emitEffect(next, { kind: "arrow", sourceId: kit.id, targetId: target.id, amount: -1, label: "BỎ 1 MŨI TÊN" });
+    emitEffect(next, { kind: "arrow", sourceId: kit.id, targetId: target.id, amount: -1, label: "BỎ 1 MŨI TÊN", targetEffectId });
     note(next, `Kit Carlson bỏ 1 mũi tên của ${target.name}.`);
     if (next.pending.kitRemaining > 0 && selectableTargetIds(next).length) return next;
     next.pending.kitRemaining = 0;
@@ -599,10 +606,11 @@ export function chooseTarget(game: GameState, targetId: string, deferResolution 
     const shortGame = alivePlayers(next).length <= 3;
     const janetRangeSwap = shooter.character.id === "janet" && ((face === "bull1" && distance === 2) || (face === "bull2" && !shortGame && distance === 1));
     const roseExtendedRange = shooter.character.id === "rose" && ((face === "bull1" && distance === 2) || (face === "bull2" && distance === 3));
-    emitEffect(next, { kind: "target", sourceId: shooter.id, targetId, label: face });
+    const targetEffectId = emitEffect(next, { kind: "target", sourceId: shooter.id, targetId, label: face });
     if (janetRangeSwap) emitSkill(next, shooter.id, "CALAMITY JANET • ĐỔI TẦM BẮN", targetId);
     if (roseExtendedRange) emitSkill(next, shooter.id, "ROSE DOOLAN • BẮN XA HƠN", targetId);
     next.pending!.shotTargets.push(targetId);
+    next.pending!.shotTargetEffectIds.push(targetEffectId);
     if (next.pending!.shotTargets.length === next.pending!.shots.length) {
       if (deferResolution) {
         next.phase = next.pending!.beers ? "beer" : "resolving";
@@ -611,8 +619,9 @@ export function chooseTarget(game: GameState, targetId: string, deferResolution 
       return resolvePending(next);
     }
   } else if (next.phase === "beer") {
-    emitEffect(next, { kind: "target", sourceId: next.players[next.turn].id, targetId, label: "beer" });
+    const targetEffectId = emitEffect(next, { kind: "target", sourceId: next.players[next.turn].id, targetId, label: "beer" });
     next.pending!.beerTargets.push(targetId);
+    next.pending!.beerTargetEffectIds.push(targetEffectId);
     if (next.pending!.beerTargets.length === next.pending!.beers) {
       if (deferResolution) {
         next.phase = "resolving";
@@ -656,7 +665,14 @@ function resolvePending(game: GameState, choice?: { kind: "bart" | "pedro"; coun
       const requested = next.pending!.slabDoubleIndex === index ? 2 : 1;
       const actual = Math.min(requested, remainingDamage.get(targetId) ?? 0);
       remainingDamage.set(targetId, (remainingDamage.get(targetId) ?? 0) - actual);
-      emitEffect(next, { kind: "shot", sourceId: shooter.id, targetId, amount: actual ? -actual : 0 });
+      emitEffect(next, {
+        kind: "shot",
+        sourceId: shooter.id,
+        targetId,
+        amount: actual ? -actual : 0,
+        label: next.pending!.shots[index],
+        targetEffectId: next.pending!.shotTargetEffectIds[index],
+      });
     });
     if (next.winner || !shooter.alive) return finishTurn(next);
 
@@ -670,10 +686,16 @@ function resolvePending(game: GameState, choice?: { kind: "bart" | "pedro"; coun
     }
 
     const jesseBoosted = shooter.character.id === "jesse" && shooter.hp <= 4;
-    for (const id of next.pending.beerTargets) {
+    for (const [index, id] of next.pending.beerTargets.entries()) {
       const amount = id === shooter.id && jesseBoosted ? 2 : 1;
       if (amount === 2) emitSkill(next, shooter.id, "JESSE JONES • MỖI BIA HỒI 2 MÁU", id);
-      heal(next, id, amount, "Bia", { kind: "beer", sourceId: shooter.id, targetId: id });
+      heal(next, id, amount, "Bia", {
+        kind: "beer",
+        sourceId: shooter.id,
+        targetId: id,
+        label: "beer",
+        targetEffectId: next.pending.beerTargetEffectIds[index],
+      });
     }
     next.pending.beersResolved = true;
   }

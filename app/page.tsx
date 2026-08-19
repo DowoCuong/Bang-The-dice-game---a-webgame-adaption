@@ -83,6 +83,7 @@ export default function Home() {
   const lastIntroRound = useRef(0);
   const lastWinner = useRef<string | null>(null);
   const effectQueueEnd = useRef(0);
+  const actionQueueEnd = useRef(0);
   const skillQueueEnd = useRef(0);
   const previousHp = useRef<Record<string, number>>({});
   const healthPulseSequence = useRef(0);
@@ -149,6 +150,7 @@ export default function Home() {
     if (game.effectSeq < lastEffectId.current) {
       lastEffectId.current = 0;
       effectQueueEnd.current = 0;
+      actionQueueEnd.current = 0;
       skillQueueEnd.current = 0;
       setActiveEffects([]);
     }
@@ -158,24 +160,41 @@ export default function Home() {
     lastEffectTurn.current = game.turnNumber;
     lastWinner.current = game.winner;
     const now = Date.now();
-    let uiDelay = 0;
-    const staged = incoming.map((effect, index): ActiveEffect => {
-      const previous = incoming[index - 1];
-      const sameGatlingVolley = effect.kind === "gatling" && previous?.kind === "gatling" && effect.sourceId === previous.sourceId;
-      const sameTargetBurst = !!effect.targetId && effect.targetId === previous?.targetId;
-      if (index > 0 && !sameGatlingVolley && !sameTargetBurst) uiDelay = Math.min(uiDelay + 140, 420);
-      if (effect.kind !== "skill") return { ...effect, uiDelay };
-      const startsAt = Math.max(now + uiDelay, skillQueueEnd.current);
-      skillQueueEnd.current = startsAt + 3100;
-      return { ...effect, uiDelay: startsAt - now };
+    let previousAction: GameEffect | null = null;
+    let actionStartsAt = now;
+    const staged = incoming.map((effect): ActiveEffect => {
+      if (effect.kind === "skill") {
+        const startsAt = Math.max(now, skillQueueEnd.current);
+        skillQueueEnd.current = startsAt + 3100;
+        return { ...effect, uiDelay: startsAt - now };
+      }
+      const primaryAction = effect.targetEffectId !== undefined || effect.kind === "gatling";
+      if (primaryAction) {
+        const sameGatlingVolley = effect.kind === "gatling" && previousAction?.kind === "gatling" && effect.sourceId === previousAction.sourceId;
+        if (!sameGatlingVolley) {
+          actionStartsAt = Math.max(now, actionQueueEnd.current);
+          actionQueueEnd.current = actionStartsAt + 900;
+        }
+        previousAction = effect;
+        return { ...effect, uiDelay: actionStartsAt - now };
+      }
+      return { ...effect, uiDelay: 0 };
     });
     if (incoming.length) {
       lastEffectId.current = incoming.at(-1)!.id;
       setActiveEffects((currentEffects) => [...currentEffects, ...staged]);
     }
     staged.forEach((effect) => {
-      const duration = effect.kind === "target" ? 1700 : 3700;
+      if (effect.kind === "target") return;
+      const duration = 3700;
       effectQueueEnd.current = Math.max(effectQueueEnd.current, now + duration + effect.uiDelay);
+      if (effect.targetEffectId !== undefined) {
+        const targetTimer = window.setTimeout(() => {
+          setActiveEffects((currentEffects) => currentEffects.filter((item) => item.id !== effect.targetEffectId));
+          effectTimers.current = effectTimers.current.filter((activeTimer) => activeTimer !== targetTimer);
+        }, 780 + effect.uiDelay);
+        effectTimers.current.push(targetTimer);
+      }
       const timer = window.setTimeout(() => {
         setActiveEffects((currentEffects) => currentEffects.filter((item) => item.id !== effect.id));
         effectTimers.current = effectTimers.current.filter((activeTimer) => activeTimer !== timer);
@@ -263,6 +282,7 @@ export default function Home() {
     lastIntroRound.current = 0;
     lastWinner.current = null;
     effectQueueEnd.current = 0;
+    actionQueueEnd.current = 0;
     skillQueueEnd.current = 0;
     previousHp.current = {};
     setHealthPulses({});
@@ -397,6 +417,7 @@ export default function Home() {
             {activeEffects.filter((effect) => effect.kind === "target" && effect.targetId).map((effect) => {
               const [sourceX, sourceY] = effectPosition(effect.sourceId);
               const [targetX, targetY] = effectPosition(effect.targetId);
+              const markerId = `target-head-${effect.id}`;
               return (
                 <span
                   className={`target-cue target-${effect.label ?? "bull1"}`}
@@ -405,11 +426,18 @@ export default function Home() {
                     "--source-y": `${sourceY}%`,
                     "--target-x": `${targetX}%`,
                     "--target-y": `${targetY}%`,
-                    "--effect-delay": `${effect.uiDelay}ms`,
                   } as CSSProperties}
                   key={effect.id}
                 >
-                  <span className="target-cue-arrow" aria-hidden="true">➤</span>
+                  <svg className="target-cue-beam" aria-hidden="true">
+                    <defs>
+                      <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+                      </marker>
+                    </defs>
+                    <line className="target-beam-glow" x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} vectorEffect="non-scaling-stroke" />
+                    <line className="target-beam-core" x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} markerEnd={`url(#${markerId})`} vectorEffect="non-scaling-stroke" />
+                  </svg>
                   <small>{effect.label === "beer" ? "BIA" : effect.label === "arrow" ? "MŨI TÊN" : effect.label === "bull2" ? "TẦM 2" : "TẦM 1"}</small>
                 </span>
               );
@@ -424,8 +452,20 @@ export default function Home() {
                 "--target-y": `${targetY}%`,
                 "--effect-delay": `${effect.uiDelay}ms`,
               } as CSSProperties;
+              const showTrail = !!effect.sourceId && ["shot", "beer", "gatling", "arrow"].includes(effect.kind);
+              const markerId = `effect-head-${effect.id}`;
               return (
                 <span className={`effect-event effect-${effect.kind}`} style={effectStyle} key={effect.id}>
+                  {showTrail && (
+                    <svg className="effect-trail" aria-hidden="true">
+                      <defs>
+                        <marker id={markerId} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+                        </marker>
+                      </defs>
+                      <line x1={`${sourceX}%`} y1={`${sourceY}%`} x2={`${targetX}%`} y2={`${targetY}%`} markerEnd={`url(#${markerId})`} vectorEffect="non-scaling-stroke" />
+                    </svg>
+                  )}
                   <span className="effect-projectile" aria-hidden="true">
                     {effect.kind === "shot" ? <img src="/effects/bull1.png" alt="" /> : effect.kind === "beer" ? "♨" : effect.kind === "gatling" ? "✹" : effect.kind === "arrow" ? "➹" : "▰"}
                   </span>

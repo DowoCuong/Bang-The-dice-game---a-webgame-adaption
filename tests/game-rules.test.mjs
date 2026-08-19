@@ -241,6 +241,7 @@ test("shots, beer and Gatling emit source-to-target animation events", () => {
   const shotEffects = shot.effects.filter((effect) => effect.kind === "shot" && effect.sourceId === "p0" && effect.targetId === target);
   assert.equal(shotEffects.length, 2);
   assert.ok(shotEffects.every((effect) => effect.amount === -1));
+  assert.deepEqual(shotEffects.map((effect) => effect.targetEffectId), lockedShots.pending.shotTargetEffectIds);
 
   const beerGame = newGame(4, middle);
   beerGame.turn = 0;
@@ -254,7 +255,7 @@ test("shots, beer and Gatling emit source-to-target animation events", () => {
   assert.equal(lockedBeer.players[0].hp, drinking.players[0].hp);
   const beer = resolveChoices(lockedBeer);
   assert.ok(beer.effects.some((effect) => effect.kind === "target" && effect.sourceId === "p0" && effect.targetId === "p0" && effect.label === "beer"));
-  assert.ok(beer.effects.some((effect) => effect.kind === "beer" && effect.sourceId === "p0" && effect.targetId === "p0" && effect.amount === 1));
+  assert.ok(beer.effects.some((effect) => effect.kind === "beer" && effect.sourceId === "p0" && effect.targetId === "p0" && effect.amount === 1 && effect.targetEffectId === lockedBeer.pending.beerTargetEffectIds[0]));
 
   const gatlingGame = newGame(4, middle);
   gatlingGame.turn = 0;
@@ -269,8 +270,12 @@ test("shots, beer and Gatling emit source-to-target animation events", () => {
 test("table notifications remain visible for about three seconds", () => {
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(page, /effect\.kind === "target" \? 1700 : 3700/);
+  assert.match(page, /if \(effect\.kind === "target"\) return/);
+  assert.match(page, /actionQueueEnd\.current = actionStartsAt \+ 900/);
+  assert.match(page, /item\.id !== effect\.targetEffectId/);
   assert.match(page, /resolveChoices\(state\)\)\, 1000/);
+  assert.match(styles, /\.target-cue\.target-beer \{ color: #43e879; \}/);
+  assert.match(styles, /\.target-cue\.target-gatling \{ color: #42bfff; \}/);
   assert.match(styles, /animation: effect-impact 3s/);
   assert.match(styles, /animation: skill-announcement 3s/);
   assert.match(page, /skillQueueEnd\.current = startsAt \+ 3100/);
