@@ -284,7 +284,7 @@ button:disabled { cursor: default; }
   letter-spacing: .7px;
   text-shadow: 0 2px 0 #61110c;
   transform: translate(-50%, -50%);
-  animation: effect-impact 1s cubic-bezier(.18, .82, .25, 1.25) calc(var(--effect-delay) + 520ms) both;
+  animation: effect-impact 3s cubic-bezier(.18, .82, .25, 1.1) calc(var(--effect-delay) + 520ms) both;
 }
 .effect-beer .effect-impact, .effect-arrow .effect-impact { color: #1a270f; border-color: #fff6bb; background: #e7bd50f2; text-shadow: none; }
 .effect-gatling .effect-impact { background: #225f85ed; }
@@ -306,7 +306,7 @@ button:disabled { cursor: default; }
   font: 1000 17px/1.15 "Segoe UI", Arial, sans-serif;
   text-align: center;
   transform: translate(-50%, -50%);
-  animation: skill-announcement 1.28s ease var(--effect-delay) both;
+  animation: skill-announcement 3s ease var(--effect-delay) both;
 }
 .skill-toast small { padding: 5px 8px; color: #291006; border-radius: 4px; background: #f2bb40; font-size: 8px; letter-spacing: 1px; white-space: nowrap; }
 
@@ -403,7 +403,19 @@ button:disabled { cursor: default; }
   letter-spacing: .7px;
   animation: skill-button-pulse .8s ease-in-out infinite alternate;
 }
-.skill-button.armed { color: #1c250e; border-color: #ffe89c; background: linear-gradient(#d7df68, #8ea72d); box-shadow: 0 4px 0 #42510f, 0 0 20px #d5e84f77; animation: none; }
+.ability-choice {
+  width: min(520px, 92vw);
+  padding: 12px;
+  color: #f4d594;
+  border: 2px solid #d69238;
+  border-radius: 9px;
+  background: #160c08f2;
+  box-shadow: 0 10px 30px #000c;
+  text-align: center;
+}
+.ability-choice strong { display: block; margin-bottom: 9px; font-size: 12px; }
+.ability-choice div { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
+.ability-choice button { padding: 8px 10px; color: #241008; border: 1px solid #ffe3a0; border-radius: 6px; background: #dfa43b; font-size: 9px; font-weight: 1000; }
 .turn-panel > p { margin: 6px 0 0; color: #b9a98a; font-size: 10px; }
 .target-callout, .bot-thinking { padding: 10px 15px; border: 1px solid #d69238; border-radius: 8px; background: #160c08e8; color: #f4d594; font-size: 12px; font-weight: 800; }
 .bot-thinking { display: flex; align-items: center; gap: 4px; }
@@ -484,14 +496,14 @@ button:disabled { cursor: default; }
 }
 @keyframes effect-impact {
   0% { opacity: 0; transform: translate(-50%, -5%) scale(.3) rotate(-8deg); }
-  24% { opacity: 1; transform: translate(-50%, -75%) scale(1.28) rotate(3deg); }
-  72% { opacity: 1; transform: translate(-50%, -105%) scale(1) rotate(-1deg); }
+  6% { opacity: 1; transform: translate(-50%, -75%) scale(1.28) rotate(3deg); }
+  92% { opacity: 1; transform: translate(-50%, -105%) scale(1) rotate(-1deg); }
   100% { opacity: 0; transform: translate(-50%, -145%) scale(.9); }
 }
 @keyframes skill-announcement {
   0% { opacity: 0; transform: translate(-50%, -80%) scale(.72); filter: blur(4px); }
-  14%, 72% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
-  82% { transform: translate(-50%, -50%) scale(1.04); }
+  8%, 88% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
+  92% { transform: translate(-50%, -50%) scale(1.04); }
   100% { opacity: 0; transform: translate(-50%, -20%) scale(.9); }
 }
 @keyframes skill-button-pulse { to { filter: brightness(1.22); transform: translateY(-2px); } }

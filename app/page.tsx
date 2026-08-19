@@ -7,6 +7,7 @@ import {
   canActivateSkill,
   canRoll,
   characters,
+  chooseAbility,
   chooseTarget,
   currentPrompt,
   faceInfo,
@@ -15,6 +16,7 @@ import {
   playBotTurn,
   rollDice,
   selectableTargetIds,
+  skipKitArrow,
   toggleHeld,
   type GameEffect,
   type GameState,
@@ -107,14 +109,14 @@ export default function Home() {
       const timer = window.setTimeout(() => {
         setActiveEffects((currentEffects) => currentEffects.filter((item) => item.id !== effect.id));
         effectTimers.current = effectTimers.current.filter((activeTimer) => activeTimer !== timer);
-      }, 1550 + effect.uiDelay);
+      }, 3700 + effect.uiDelay);
       effectTimers.current.push(timer);
     });
   }, [game.effects, game.effectSeq]);
 
   useEffect(() => {
     if (game.phase !== "bot") return;
-    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 1500);
+    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 3600);
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turn]);
 
@@ -294,19 +296,28 @@ export default function Home() {
                   <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !canRoll(game)}>
                     {rolling ? "ĐANG TUNG…" : game.rolls ? "TUNG LẠI" : "TUNG XÚC XẮC"} <kbd>SPACE</kbd>
                   </button>
-                  {(canActivateSkill(game) || game.skillArmed) && (
-                    <button
-                      className={`skill-button ${game.skillArmed ? "armed" : ""}`}
-                      onClick={() => setGame((state) => activateSkill(state))}
-                      disabled={rolling || game.skillArmed}
-                    >
-                      {game.skillArmed ? "✓ ĐÃ KÍCH HOẠT" : `KÍCH HOẠT ${current.character.name.toUpperCase()}`}
-                    </button>
-                  )}
                   {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))} disabled={rolling}>CHỐT KẾT QUẢ</button>}
                 </>
               )}
-              {(game.phase === "shot" || game.phase === "beer") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
+              {game.phase === "shot" && canActivateSkill(game) && (
+                <button className="skill-button" onClick={() => setGame((state) => activateSkill(state))}>
+                  NHÂN ĐÔI PHÁT BẮN NÀY
+                </button>
+              )}
+              {(game.phase === "shot" || game.phase === "beer" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
+              {game.phase === "kit" && <button className="resolve-button" onClick={() => setGame((state) => skipKitArrow(state))}>BỎ QUA GATLING NÀY</button>}
+              {game.phase === "ability" && game.decision && (
+                <div className="ability-choice">
+                  <strong>{currentPrompt(game)}</strong>
+                  <div>
+                    {Array.from({ length: game.decision.max + 1 }, (_, count) => (
+                      <button key={count} onClick={() => setGame((state) => chooseAbility(state, count))}>
+                        {count === 0 ? "KHÔNG DÙNG" : game.decision!.kind === "bart" ? `ĐỔI ${count} HP → ${count} MŨI TÊN` : `BỎ ${count} MŨI TÊN`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {game.phase === "bot" && <div className="bot-thinking"><i /><i /><i /> {current.name} đang tung…</div>}
               {game.phase === "over" && <button className="roll-button" onClick={() => setSetupOpen(true)}>CHƠI VÁN MỚI</button>}
             </div>
