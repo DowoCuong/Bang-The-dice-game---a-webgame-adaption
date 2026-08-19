@@ -24,6 +24,7 @@ import {
 } from "./game";
 
 type ActiveEffect = GameEffect & { uiDelay: number };
+type TransitionStage = "waiting" | "round" | "player" | "winner" | null;
 
 const roleLabel: Record<Role, string> = {
   Sheriff: "CẢNH SÁT TRƯỞNG",
@@ -64,9 +65,10 @@ export default function Home() {
   const [logOpen, setLogOpen] = useState(false);
   const [nextCount, setNextCount] = useState(5);
   const [rolling, setRolling] = useState(false);
+  const [botRolling, setBotRolling] = useState(false);
   const [activeEffects, setActiveEffects] = useState<ActiveEffect[]>([]);
-  const [turnIntro, setTurnIntro] = useState(true);
-  const [roundIntro, setRoundIntro] = useState(true);
+  const [transitionStage, setTransitionStage] = useState<TransitionStage>("waiting");
+  const [readyTurn, setReadyTurn] = useState(0);
   const [introSerial, setIntroSerial] = useState(0);
   const rollTimer = useRef<number | null>(null);
   const turnTimer = useRef<number | null>(null);
@@ -74,8 +76,11 @@ export default function Home() {
   const lastEffectId = useRef(0);
   const lastEffectTurn = useRef(0);
   const lastIntroRound = useRef(0);
+  const lastWinner = useRef<string | null>(null);
+  const effectQueueEnd = useRef(0);
   const skillQueueEnd = useRef(0);
-  const selectable = useMemo(() => new Set(selectableTargetIds(game)), [game]);
+  const turnReady = readyTurn === game.turnNumber && transitionStage === null;
+  const selectable = useMemo(() => new Set(turnReady ? selectableTargetIds(game) : []), [game, turnReady]);
   const skillEffects = useMemo(() => activeEffects.filter((effect) => effect.kind === "skill"), [activeEffects]);
   const impactGroups = useMemo(() => {
     const groups = new Map<string, ActiveEffect[]>();
@@ -87,10 +92,16 @@ export default function Home() {
   }, [activeEffects]);
   const current = game.players[game.turn];
   const human = game.players.find((player) => player.human)!;
-  const diceMoving = rolling || game.phase === "bot";
+  const shownResult = !turnReady && game.lastTurnResult && (
+    game.lastTurnResult.turnNumber === game.turnNumber - 1
+    || (game.phase === "over" && game.lastTurnResult.turnNumber === game.turnNumber)
+  ) ? game.lastTurnResult : null;
+  const displayedDice = shownResult?.dice ?? game.dice;
+  const resultPlayer = shownResult ? game.players.find((player) => player.id === shownResult.playerId) : null;
+  const diceMoving = rolling || botRolling;
 
   const rollWithAnimation = useCallback(() => {
-    if (rolling || !canRoll(game)) return;
+    if (rolling || !turnReady || !canRoll(game)) return;
     setRolling(true);
     const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 80 : 820;
     rollTimer.current = window.setTimeout(() => {
@@ -98,7 +109,7 @@ export default function Home() {
       setRolling(false);
       rollTimer.current = null;
     }, duration);
-  }, [game, rolling]);
+  }, [game, rolling, turnReady]);
 
   useEffect(() => () => {
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
@@ -107,77 +118,116 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    setRoundIntro(game.round !== lastIntroRound.current);
-    lastIntroRound.current = game.round;
-    setTurnIntro(true);
-    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
-    turnTimer.current = window.setTimeout(() => {
-      setTurnIntro(false);
-      turnTimer.current = null;
-    }, 2000);
-    return () => {
-      if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
-    };
-  }, [game.turnNumber, introSerial]);
-
-  useEffect(() => {
     if (game.effectSeq < lastEffectId.current) {
       lastEffectId.current = 0;
+      effectQueueEnd.current = 0;
       skillQueueEnd.current = 0;
       setActiveEffects([]);
     }
     const incoming = game.effects.filter((effect) => effect.id > lastEffectId.current);
     const turnChanged = game.turnNumber !== lastEffectTurn.current;
+    const winnerChanged = !!game.winner && game.winner !== lastWinner.current;
     lastEffectTurn.current = game.turnNumber;
-    if (!incoming.length) return;
-    lastEffectId.current = incoming.at(-1)!.id;
+    lastWinner.current = game.winner;
     const now = Date.now();
-    let uiDelay = turnChanged ? 2000 : 0;
+    let uiDelay = 0;
     const staged = incoming.map((effect, index): ActiveEffect => {
       const previous = incoming[index - 1];
       const sameGatlingVolley = effect.kind === "gatling" && previous?.kind === "gatling" && effect.sourceId === previous.sourceId;
       const sameTargetBurst = !!effect.targetId && effect.targetId === previous?.targetId;
-      if (index > 0 && !sameGatlingVolley && !sameTargetBurst) uiDelay = Math.min(uiDelay + 140, (turnChanged ? 2000 : 0) + 420);
+      if (index > 0 && !sameGatlingVolley && !sameTargetBurst) uiDelay = Math.min(uiDelay + 140, 420);
       if (effect.kind !== "skill") return { ...effect, uiDelay };
       const startsAt = Math.max(now + uiDelay, skillQueueEnd.current);
       skillQueueEnd.current = startsAt + 3100;
       return { ...effect, uiDelay: startsAt - now };
     });
-    setActiveEffects((currentEffects) => [...currentEffects, ...staged]);
+    if (incoming.length) {
+      lastEffectId.current = incoming.at(-1)!.id;
+      setActiveEffects((currentEffects) => [...currentEffects, ...staged]);
+    }
     staged.forEach((effect) => {
+      effectQueueEnd.current = Math.max(effectQueueEnd.current, now + 3700 + effect.uiDelay);
       const timer = window.setTimeout(() => {
         setActiveEffects((currentEffects) => currentEffects.filter((item) => item.id !== effect.id));
         effectTimers.current = effectTimers.current.filter((activeTimer) => activeTimer !== timer);
       }, 3700 + effect.uiDelay);
       effectTimers.current.push(timer);
     });
-  }, [game.effects, game.effectSeq]);
+
+    if (!turnChanged && !winnerChanged) return;
+    const startsRound = turnChanged && game.round !== lastIntroRound.current;
+    if (turnChanged) lastIntroRound.current = game.round;
+    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
+
+    const showPlayerTurn = () => {
+      setTransitionStage("player");
+      turnTimer.current = window.setTimeout(() => {
+        setTransitionStage(null);
+        setReadyTurn(game.turnNumber);
+        turnTimer.current = null;
+      }, 2000);
+    };
+    const showNextNotice = () => {
+      if (game.winner) {
+        setTransitionStage("winner");
+        turnTimer.current = window.setTimeout(() => {
+          setTransitionStage(null);
+          turnTimer.current = null;
+        }, 3000);
+      } else if (startsRound) {
+        setTransitionStage("round");
+        turnTimer.current = window.setTimeout(showPlayerTurn, 2000);
+      } else {
+        showPlayerTurn();
+      }
+    };
+
+    const firstTurn = game.turnNumber === 1 && !game.lastTurnResult && !game.winner;
+    const wait = firstTurn ? 0 : Math.max(2000, effectQueueEnd.current - now + 100);
+    if (wait > 0) {
+      setTransitionStage("waiting");
+      turnTimer.current = window.setTimeout(showNextNotice, wait);
+    } else {
+      showNextNotice();
+    }
+  }, [game.effects, game.effectSeq, game.turnNumber, game.winner, introSerial]);
 
   useEffect(() => {
-    if (game.phase !== "bot" || turnIntro) return;
-    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 3600);
+    if (game.phase !== "bot" || !turnReady) return;
+    setBotRolling(true);
+    const timer = window.setTimeout(() => {
+      setGame((state) => playBotTurn(state));
+      setBotRolling(false);
+    }, 900);
     return () => window.clearTimeout(timer);
-  }, [game.phase, game.turn, turnIntro]);
+  }, [game.phase, game.turn, turnReady]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || rolling || !canRoll(game)) return;
+      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || rolling || !turnReady || !canRoll(game)) return;
       event.preventDefault();
       rollWithAnimation();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [game, setupOpen, rulesOpen, logOpen, rolling, rollWithAnimation]);
+  }, [game, setupOpen, rulesOpen, logOpen, rolling, turnReady, rollWithAnimation]);
 
   const startGame = () => {
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
+    if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     rollTimer.current = null;
+    turnTimer.current = null;
     setRolling(false);
+    setBotRolling(false);
+    setTransitionStage("waiting");
+    setReadyTurn(0);
     effectTimers.current.forEach((timer) => window.clearTimeout(timer));
     effectTimers.current = [];
     lastEffectId.current = 0;
     lastEffectTurn.current = 0;
     lastIntroRound.current = 0;
+    lastWinner.current = null;
+    effectQueueEnd.current = 0;
     skillQueueEnd.current = 0;
     setActiveEffects([]);
     setGame(newGame(nextCount));
@@ -326,20 +376,22 @@ export default function Home() {
 
           <div className="turn-panel">
             <div className="supply"><span>CHỒNG MŨI TÊN</span><b>➹ {game.arrowSupply}/9</b></div>
-            <div className={`dice-tray ${diceMoving ? "rolling" : ""}`} aria-label="Năm xúc xắc" aria-busy={diceMoving}>
-              {game.dice.map((face, index) => {
-                const dieRolling = diceMoving && (!game.held[index] || face === null);
+            {resultPlayer && <div className="dice-result-owner">KẾT QUẢ • {resultPlayer.name.toUpperCase()}</div>}
+            <div className={diceMoving ? "dice-tray rolling" : "dice-tray"} aria-label="Năm xúc xắc" aria-busy={diceMoving}>
+              {displayedDice.map((face, index) => {
+                const held = !shownResult && game.held[index];
+                const dieRolling = diceMoving && (!held || face === null);
                 return (
                   <button
-                    className={`die ${face ?? "blank"} ${game.held[index] ? "held" : ""} ${dieRolling ? "rolling" : face ? "revealed" : ""}`}
+                    className={`die ${face ?? "blank"} ${held ? "held" : ""} ${dieRolling ? "rolling" : face ? "revealed" : ""}`}
                     style={{ "--die-index": index } as CSSProperties}
                     key={index}
                     onClick={() => setGame((state) => toggleHeld(state, index))}
-                    disabled={rolling || game.phase !== "roll" || game.rolls === 0}
-                    aria-label={`Xúc xắc ${index + 1}: ${face ? faceInfo[face].label : "chưa tung"}${game.held[index] ? ", đang giữ" : ""}`}
+                    disabled={rolling || !turnReady || game.phase !== "roll" || game.rolls === 0}
+                    aria-label={`Xúc xắc ${index + 1}: ${face ? faceInfo[face].label : "chưa tung"}${held ? ", đang giữ" : ""}`}
                   >
                     <span>{face ? faceInfo[face].symbol : "?"}</span>
-                    {game.held[index] && <small>GIỮ</small>}
+                    {held && <small>GIỮ</small>}
                   </button>
                 );
               })}
@@ -348,7 +400,7 @@ export default function Home() {
             <div className="turn-actions">
               {game.phase === "roll" && (
                 <>
-                  <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !canRoll(game)}>
+                  <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !turnReady || !canRoll(game)}>
                     {rolling ? "ĐANG TUNG…" : game.rolls ? "TUNG LẠI" : "TUNG XÚC XẮC"} <kbd>SPACE</kbd>
                   </button>
                   {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))} disabled={rolling}>CHỐT KẾT QUẢ</button>}
@@ -373,11 +425,19 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {game.phase === "bot" && <div className="bot-thinking"><i /><i /><i /> {current.name} đang tung…</div>}
+              {game.phase === "bot" && turnReady && <div className="bot-thinking"><i /><i /><i /> {current.name} đang tung…</div>}
               {game.phase === "over" && <button className="roll-button" onClick={() => setSetupOpen(true)}>CHƠI VÁN MỚI</button>}
             </div>
             {game.phase === "roll" && <p aria-live="polite">{rolling ? "Xúc xắc đang lăn…" : `Lần tung ${game.rolls}/${maxRolls(game)} · Bấm xúc xắc để giữ`}</p>}
           </div>
+
+          {transitionStage === "player" && (
+            <div className="player-turn-toast" role="status" aria-live="assertive">
+              <small>TỚI LƯỢT</small>
+              <strong>{current.name.toUpperCase()}</strong>
+              <span>{current.character.name.toUpperCase()}</span>
+            </div>
+          )}
         </section>
       </div>
 
@@ -396,11 +456,20 @@ export default function Home() {
         ))}
       </div>
 
-      {turnIntro && (
-        <div className={`turn-intro ${roundIntro ? "round-start" : "player-turn"}`} role="status" aria-live="assertive">
-          {roundIntro && <span>VÒNG {game.round}</span>}
-          <strong>TỚI LƯỢT {current.name.toUpperCase()}</strong>
-          <small>{current.character.name.toUpperCase()}</small>
+      {!turnReady && transitionStage !== "round" && transitionStage !== "winner" && <div className="transition-lock" aria-hidden="true" />}
+
+      {transitionStage === "round" && (
+        <div className="turn-intro round-start" role="status" aria-live="assertive">
+          <span>VÒNG {game.round}</span>
+          <small>BẮT ĐẦU VÒNG MỚI</small>
+        </div>
+      )}
+
+      {transitionStage === "winner" && (
+        <div className="winner-intro" role="status" aria-live="assertive">
+          <small>TRẬN ĐẤU KẾT THÚC</small>
+          <strong>PHE CHIẾN THẮNG</strong>
+          <span>{game.winner}</span>
         </div>
       )}
 

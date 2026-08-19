@@ -324,7 +324,7 @@ button:disabled { cursor: default; }
 .skill-toast small { padding: 6px 9px; color: #291006; border-radius: 5px; background: #f2bb40; font-size: 9px; letter-spacing: 1px; white-space: nowrap; }
 .skill-toast strong { font: inherit; }
 
-.turn-intro {
+.turn-intro, .winner-intro {
   position: fixed;
   z-index: 70;
   inset: 0;
@@ -337,13 +337,40 @@ button:disabled { cursor: default; }
   backdrop-filter: brightness(.22) blur(2px);
   text-align: center;
   pointer-events: all;
+}
+.turn-intro {
   animation: turn-intro 2s ease both;
 }
 .turn-intro span { font-size: clamp(52px, 10vw, 128px); font-weight: 1000; letter-spacing: .08em; text-shadow: 0 5px 0 #701811, 0 0 42px #e9a62c88; }
-.turn-intro strong { margin-top: 10px; color: #e8ad39; font-size: clamp(18px, 3vw, 36px); letter-spacing: .18em; }
 .turn-intro small { margin-top: 7px; color: #d8c39a; font-size: clamp(11px, 1.5vw, 17px); font-weight: 900; letter-spacing: .14em; }
-.turn-intro.player-turn strong { margin-top: 0; font-size: clamp(42px, 7vw, 92px); text-shadow: 0 5px 0 #701811, 0 0 42px #e9a62c88; }
-.turn-intro.player-turn small { font-size: clamp(13px, 2vw, 22px); }
+.winner-intro { z-index: 75; animation: winner-announcement 3s ease both; }
+.winner-intro small { color: #d8c39a; font-size: clamp(11px, 1.5vw, 18px); font-weight: 1000; letter-spacing: .2em; }
+.winner-intro strong { margin-top: 12px; color: #e8ad39; font-size: clamp(20px, 3vw, 38px); letter-spacing: .16em; }
+.winner-intro span { max-width: 90vw; margin-top: 14px; font-size: clamp(42px, 7vw, 96px); font-weight: 1000; text-shadow: 0 5px 0 #701811, 0 0 42px #e9a62c88; }
+.transition-lock { position: fixed; z-index: 65; inset: 0; cursor: wait; }
+.player-turn-toast {
+  position: absolute;
+  z-index: 55;
+  left: 50%;
+  top: 50%;
+  min-width: min(440px, 86vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 24px;
+  color: #fff1bd;
+  border: 3px solid #ffd66c;
+  border-radius: 10px;
+  background: linear-gradient(100deg, #5f180ff2, #180b08fa 50%, #5f180ff2);
+  box-shadow: 0 0 0 6px #120604cc, 0 0 52px #f0a824aa, 0 18px 50px #000e;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: player-turn-notice 2s ease both;
+}
+.player-turn-toast small { padding: 5px 9px; color: #291006; border-radius: 5px; background: #f2bb40; font-size: 9px; font-weight: 1000; letter-spacing: .14em; }
+.player-turn-toast strong { margin-top: 8px; font-size: clamp(24px, 3vw, 38px); letter-spacing: .12em; }
+.player-turn-toast span { margin-top: 4px; color: #d8c39a; font-size: 12px; font-weight: 900; letter-spacing: .1em; }
 
 .players-6 .seat { width: 510px; min-height: 156px; grid-template-columns: 66px 444px; grid-template-rows: 116px 40px; }
 .players-6 .role-card { width: 66px; height: 116px; }
@@ -372,6 +399,7 @@ button:disabled { cursor: default; }
 }
 .supply { display: flex; gap: 18px; align-items: center; margin-bottom: 12px; color: #bca67d; font-size: 10px; letter-spacing: 1px; }
 .supply b { color: #f0c45d; font-size: 18px; }
+.dice-result-owner { margin: -5px 0 9px; padding: 4px 9px; color: #f2ce78; border: 1px solid #9b6429; border-radius: 5px; background: #130a06d9; font-size: 9px; font-weight: 1000; letter-spacing: .12em; }
 .dice-tray { display: flex; gap: 10px; padding: 18px; border: 1px solid #e3b75544; border-radius: 18px; background: #090b09e6; box-shadow: 0 16px 40px #000c, inset 0 0 30px #000; perspective: 650px; transform-style: preserve-3d; }
 .dice-tray.rolling { animation: tray-shake .72s ease-in-out both; }
 .die {
@@ -544,6 +572,16 @@ button:disabled { cursor: default; }
 @keyframes turn-intro {
   0% { opacity: 0; }
   10%, 78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes player-turn-notice {
+  0% { opacity: 0; transform: translate(-50%, -35%) scale(.72); filter: blur(3px); }
+  10%, 80% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translate(-50%, -65%) scale(.9); }
+}
+@keyframes winner-announcement {
+  0% { opacity: 0; }
+  8%, 88% { opacity: 1; }
   100% { opacity: 0; }
 }
 @keyframes skill-button-pulse { to { filter: brightness(1.22); transform: translateY(-2px); } }

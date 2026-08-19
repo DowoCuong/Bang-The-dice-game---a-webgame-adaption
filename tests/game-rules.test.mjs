@@ -54,6 +54,8 @@ test("a bot completes its turn and passes play", () => {
   const next = playBotTurn(game, () => 0.75);
   assert.notEqual(next.turn, 1);
   assert.equal(next.rolls, 0);
+  assert.equal(next.lastTurnResult.playerId, "p1");
+  assert.equal(next.lastTurnResult.dice.length, 5);
 });
 
 test("Slab the Killer chooses exactly which shot to double", () => {
@@ -249,12 +251,19 @@ test("round and player-turn announcements are separated and last two seconds", (
   game.dice = ["dynamite", "dynamite", "arrow", "arrow", "arrow"];
   const next = beginResolution(game);
   assert.equal(next.turnNumber, 2);
+  assert.equal(next.lastTurnResult.playerId, "p0");
+  assert.deepEqual(next.lastTurnResult.dice, game.dice);
 
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(page, /VÒNG \{game\.round\}/);
-  assert.match(page, /TỚI LƯỢT \{current\.name\.toUpperCase\(\)\}/);
+  assert.match(page, /<small>TỚI LƯỢT<\/small>/);
+  assert.match(page, /<strong>\{current\.name\.toUpperCase\(\)\}<\/strong>/);
   assert.doesNotMatch(page, /LƯỢT \{game\.turnNumber\}/);
   assert.match(styles, /animation: turn-intro 2s/);
+  assert.match(styles, /animation: player-turn-notice 2s/);
+  assert.match(styles, /animation: winner-announcement 3s/);
+  assert.match(page, /effectQueueEnd\.current - now \+ 100/);
+  assert.match(page, /KẾT QUẢ • \{resultPlayer\.name\.toUpperCase\(\)\}/);
   assert.match(styles, /\.effect-impact-row[\s\S]*display: flex/);
 });

@@ -57,6 +57,13 @@ export type GameEffect = {
   label?: string;
 };
 
+export type TurnResult = {
+  playerId: string;
+  turnNumber: number;
+  dice: (Face | null)[];
+  rolls: number;
+};
+
 export type GameState = {
   players: Player[];
   playerCount: number;
@@ -72,6 +79,7 @@ export type GameState = {
   decision: AbilityDecision | null;
   effects: GameEffect[];
   effectSeq: number;
+  lastTurnResult: TurnResult | null;
   log: string[];
   winner: string | null;
 };
@@ -176,6 +184,7 @@ export function newGame(playerCount = 5, rng = Math.random): GameState {
     decision: null,
     effects: [],
     effectSeq: 0,
+    lastTurnResult: null,
     log: [`${players[turn].name} bắt đầu ván với vai ${firstRole}.`],
     winner: null,
   };
@@ -463,7 +472,10 @@ export function rollDice(game: GameState, rng = Math.random) {
     if (!next.players[next.turn].alive || next.winner) break;
   }
   if (!next.players[next.turn].alive) return finishTurn(next);
-  if (next.winner) return next;
+  if (next.winner) {
+    rememberTurnResult(next);
+    return next;
+  }
   const dynamites = next.dice.filter((face) => face === "dynamite").length;
   if (dynamites >= 3) {
     note(next, "Ba Thuốc nổ! Dừng tung và mất 1 máu.");
@@ -699,6 +711,7 @@ function finishTurn(game: GameState) {
   const next = clone(game);
   next.pending = null;
   next.decision = null;
+  rememberTurnResult(next);
   if (next.winner) {
     next.phase = "over";
     return next;
@@ -715,6 +728,16 @@ function finishTurn(game: GameState) {
   note(next, `Đến lượt ${next.players[turn].name} — ${next.players[turn].character.name}.`);
   applyStartAbility(next);
   return next;
+}
+
+function rememberTurnResult(game: GameState) {
+  if (!game.rolls) return;
+  game.lastTurnResult = {
+    playerId: game.players[game.turn].id,
+    turnNumber: game.turnNumber,
+    dice: [...game.dice],
+    rolls: game.rolls,
+  };
 }
 
 function rolesAreAllies(a: Role, b: Role) {
