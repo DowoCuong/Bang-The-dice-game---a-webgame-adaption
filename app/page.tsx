@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   beginResolution,
   canRoll,
@@ -56,27 +56,48 @@ export default function Home() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [nextCount, setNextCount] = useState(5);
+  const [rolling, setRolling] = useState(false);
+  const rollTimer = useRef<number | null>(null);
   const selectable = useMemo(() => new Set(selectableTargetIds(game)), [game]);
   const current = game.players[game.turn];
   const human = game.players.find((player) => player.human)!;
+  const diceMoving = rolling || game.phase === "bot";
+
+  const rollWithAnimation = useCallback(() => {
+    if (rolling || !canRoll(game)) return;
+    setRolling(true);
+    const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 80 : 820;
+    rollTimer.current = window.setTimeout(() => {
+      setGame((state) => rollDice(state));
+      setRolling(false);
+      rollTimer.current = null;
+    }, duration);
+  }, [game, rolling]);
+
+  useEffect(() => () => {
+    if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
+  }, []);
 
   useEffect(() => {
     if (game.phase !== "bot") return;
-    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 650);
+    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 850);
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turn]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || !canRoll(game)) return;
+      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || rolling || !canRoll(game)) return;
       event.preventDefault();
-      setGame((state) => rollDice(state));
+      rollWithAnimation();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [game, setupOpen, rulesOpen, logOpen]);
+  }, [game, setupOpen, rulesOpen, logOpen, rolling, rollWithAnimation]);
 
   const startGame = () => {
+    if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
+    rollTimer.current = null;
+    setRolling(false);
     setGame(newGame(nextCount));
     setSetupOpen(false);
     setLogOpen(false);
@@ -162,35 +183,39 @@ export default function Home() {
 
           <div className="turn-panel">
             <div className="supply"><span>CHỒNG MŨI TÊN</span><b>➹ {game.arrowSupply}/9</b></div>
-            <div className="dice-tray" aria-label="Năm xúc xắc">
-              {game.dice.map((face, index) => (
-                <button
-                  className={`die ${face ?? "blank"} ${game.held[index] ? "held" : ""}`}
-                  key={index}
-                  onClick={() => setGame((state) => toggleHeld(state, index))}
-                  disabled={game.phase !== "roll" || game.rolls === 0}
-                  aria-label={`Xúc xắc ${index + 1}: ${face ? faceInfo[face].label : "chưa tung"}${game.held[index] ? ", đang giữ" : ""}`}
-                >
-                  <span>{face ? faceInfo[face].symbol : "?"}</span>
-                  {game.held[index] && <small>GIỮ</small>}
-                </button>
-              ))}
+            <div className={`dice-tray ${diceMoving ? "rolling" : ""}`} aria-label="Năm xúc xắc" aria-busy={diceMoving}>
+              {game.dice.map((face, index) => {
+                const dieRolling = diceMoving && (!game.held[index] || face === null);
+                return (
+                  <button
+                    className={`die ${face ?? "blank"} ${game.held[index] ? "held" : ""} ${dieRolling ? "rolling" : face ? "revealed" : ""}`}
+                    style={{ "--die-index": index } as CSSProperties}
+                    key={index}
+                    onClick={() => setGame((state) => toggleHeld(state, index))}
+                    disabled={rolling || game.phase !== "roll" || game.rolls === 0}
+                    aria-label={`Xúc xắc ${index + 1}: ${face ? faceInfo[face].label : "chưa tung"}${game.held[index] ? ", đang giữ" : ""}`}
+                  >
+                    <span>{face ? faceInfo[face].symbol : "?"}</span>
+                    {game.held[index] && <small>GIỮ</small>}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="turn-actions">
               {game.phase === "roll" && (
                 <>
-                  <button className="roll-button" onClick={() => setGame((state) => rollDice(state))} disabled={!canRoll(game)}>
-                    {game.rolls ? "TUNG LẠI" : "TUNG XÚC XẮC"} <kbd>SPACE</kbd>
+                  <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !canRoll(game)}>
+                    {rolling ? "ĐANG TUNG…" : game.rolls ? "TUNG LẠI" : "TUNG XÚC XẮC"} <kbd>SPACE</kbd>
                   </button>
-                  {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))}>CHỐT KẾT QUẢ</button>}
+                  {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))} disabled={rolling}>CHỐT KẾT QUẢ</button>}
                 </>
               )}
               {(game.phase === "shot" || game.phase === "beer") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
               {game.phase === "bot" && <div className="bot-thinking"><i /><i /><i /> {current.name} đang tung…</div>}
               {game.phase === "over" && <button className="roll-button" onClick={() => setSetupOpen(true)}>CHƠI VÁN MỚI</button>}
             </div>
-            {game.phase === "roll" && <p>Lần tung {game.rolls}/{maxRolls(game)} · Bấm xúc xắc để giữ</p>}
+            {game.phase === "roll" && <p aria-live="polite">{rolling ? "Xúc xắc đang lăn…" : `Lần tung ${game.rolls}/${maxRolls(game)} · Bấm xúc xắc để giữ`}</p>}
           </div>
         </section>
       </div>

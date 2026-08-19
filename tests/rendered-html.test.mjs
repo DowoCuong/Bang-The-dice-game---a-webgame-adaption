@@ -18,7 +18,7 @@ test("renders the playable western table", async () => {
   const html = await response.text();
   assert.match(html, /<title>BANG! Dice — Web Game<\/title>/i);
   assert.match(html, /CHỒNG MŨI TÊN/);
-  assert.match(html, /class="dice-tray"/);
+  assert.match(html, /class="dice-tray(?: rolling)?"/);
   assert.match(html, /class="character-strip" src="\/characters\//);
   assert.match(html, /class="character-copy"/);
   assert.match(html, /class="bullet-stack"/);
