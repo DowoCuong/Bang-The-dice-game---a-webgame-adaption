@@ -117,6 +117,7 @@ button:disabled { cursor: default; }
 .seat {
   --x: 0px;
   --y: 0px;
+  --token-row: 42px;
   position: absolute;
   z-index: 4;
   left: var(--x);
@@ -134,6 +135,20 @@ button:disabled { cursor: default; }
   filter: drop-shadow(0 10px 10px #000c);
   transition: filter .18s ease, transform .18s ease, opacity .18s ease;
 }
+.seat.human-player::after {
+  position: absolute;
+  z-index: 10;
+  top: -6px;
+  right: -6px;
+  bottom: calc(var(--token-row) - 6px);
+  left: -6px;
+  border: 4px solid #4cdb70;
+  border-radius: 13px;
+  box-shadow: 0 0 0 2px #10391fcc, 0 0 26px #42e36f99;
+  content: "";
+  pointer-events: none;
+}
+.seat.human-player .seat-owner { color: #eaffdf; border-color: #73e58c; background: #174e29e8; }
 .seat:disabled { opacity: 1; }
 .seat.active { z-index: 7; }
 .seat.targetable { z-index: 8; cursor: crosshair; }
@@ -372,11 +387,11 @@ button:disabled { cursor: default; }
 .player-turn-toast strong { margin-top: 8px; font-size: clamp(24px, 3vw, 38px); letter-spacing: .12em; }
 .player-turn-toast span { margin-top: 4px; color: #d8c39a; font-size: 12px; font-weight: 900; letter-spacing: .1em; }
 
-.players-6 .seat { width: 510px; min-height: 156px; grid-template-columns: 66px 444px; grid-template-rows: 116px 40px; }
+.players-6 .seat { --token-row: 40px; width: 510px; min-height: 156px; grid-template-columns: 66px 444px; grid-template-rows: 116px 40px; }
 .players-6 .role-card { width: 66px; height: 116px; }
 .players-6 .character-copy strong { font-size: 15px; }
 .players-6 .character-copy span { font-size: 13px; }
-.players-7 .seat, .players-8 .seat { width: 460px; min-height: 142px; grid-template-columns: 60px 400px; grid-template-rows: 104px 38px; }
+.players-7 .seat, .players-8 .seat { --token-row: 38px; width: 460px; min-height: 142px; grid-template-columns: 60px 400px; grid-template-rows: 104px 38px; }
 .players-7 .role-card, .players-8 .role-card { width: 60px; height: 104px; }
 .players-7 .role-card strong, .players-8 .role-card strong { max-height: 66px; font-size: 9px; }
 .players-7 .character-copy, .players-8 .character-copy { padding: 9px 11px; }
@@ -587,17 +602,17 @@ button:disabled { cursor: default; }
 @keyframes skill-button-pulse { to { filter: brightness(1.22); transform: translateY(-2px); } }
 
 @media (max-width: 1500px) {
-  .seat { width: 430px; min-height: 138px; grid-template-columns: 60px 370px; grid-template-rows: 100px 38px; }
+  .seat { --token-row: 38px; width: 430px; min-height: 138px; grid-template-columns: 60px 370px; grid-template-rows: 100px 38px; }
   .role-card { width: 60px; height: 100px; }
   .role-card strong { max-height: 64px; font-size: 9px; }
   .character-copy { padding: 9px 11px; }
   .character-copy strong { font-size: 14px; }
   .character-copy span { margin-top: 5px; font-size: 12.5px; line-height: 1.2; }
-  .players-6 .seat { width: 400px; min-height: 126px; grid-template-columns: 56px 344px; grid-template-rows: 90px 36px; }
+  .players-6 .seat { --token-row: 36px; width: 400px; min-height: 126px; grid-template-columns: 56px 344px; grid-template-rows: 90px 36px; }
   .players-6 .role-card { width: 56px; height: 90px; }
   .players-6 .character-copy strong { font-size: 13px; }
   .players-6 .character-copy span { font-size: 11.5px; }
-  .players-7 .seat, .players-8 .seat { width: 370px; min-height: 117px; grid-template-columns: 52px 318px; grid-template-rows: 82px 35px; }
+  .players-7 .seat, .players-8 .seat { --token-row: 35px; width: 370px; min-height: 117px; grid-template-columns: 52px 318px; grid-template-rows: 82px 35px; }
   .players-7 .role-card, .players-8 .role-card { width: 52px; height: 82px; }
   .players-7 .role-card strong, .players-8 .role-card strong { max-height: 51px; font-size: 8px; }
   .players-7 .character-copy, .players-8 .character-copy { padding: 6px 8px; }
@@ -612,7 +627,7 @@ button:disabled { cursor: default; }
   .round span, .legend { display: none; }
   .table { width: 1320px; }
   .turn-panel { width: 390px; }
-  .seat { width: 374px; grid-template-columns: 54px 320px; grid-template-rows: 84px 36px; }
+  .seat { --token-row: 36px; width: 374px; grid-template-columns: 54px 320px; grid-template-rows: 84px 36px; }
   .role-card { width: 54px; height: 84px; }
   .role-card strong { max-height: 54px; }
   .character-copy { padding: 6px 8px; }

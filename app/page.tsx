@@ -285,7 +285,7 @@ export default function Home() {
             return (
               <button
                 type="button"
-                className={`seat ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
+                className={`seat ${player.human ? "human-player" : ""} ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
                 style={{
                   "--x": `${x}%`,
                   "--y": `${y}%`,

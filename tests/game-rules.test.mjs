@@ -47,6 +47,26 @@ test("distance ignores eliminated players and range targets are legal", () => {
   assert.ok(eligibleTargetIds(game, "bull1").includes(game.players[2].id));
 });
 
+test("a new round begins only when play returns to the previous round starter", () => {
+  let game = newGame(5, middle);
+  game.roundStarterId = "p2";
+  game.turn = 4;
+  game.phase = "roll";
+  game.rolls = 1;
+  game.dice = ["dynamite", "dynamite", "arrow", "arrow", "arrow"];
+
+  game = beginResolution(game);
+  assert.equal(game.turn, 0);
+  assert.equal(game.round, 1);
+  while (game.turn !== 2) {
+    game.phase = "roll";
+    game.rolls = 1;
+    game.dice = ["dynamite", "dynamite", "arrow", "arrow", "arrow"];
+    game = beginResolution(game);
+  }
+  assert.equal(game.round, 2);
+});
+
 test("a bot completes its turn and passes play", () => {
   const game = newGame(4, middle);
   game.turn = 1;
@@ -265,5 +285,7 @@ test("round and player-turn announcements are separated and last two seconds", (
   assert.match(styles, /animation: winner-announcement 3s/);
   assert.match(page, /effectQueueEnd\.current - now \+ 100/);
   assert.match(page, /KẾT QUẢ • \{resultPlayer\.name\.toUpperCase\(\)\}/);
+  assert.match(page, /player\.human \? "human-player"/);
+  assert.match(styles, /\.seat\.human-player::after/);
   assert.match(styles, /\.effect-impact-row[\s\S]*display: flex/);
 });

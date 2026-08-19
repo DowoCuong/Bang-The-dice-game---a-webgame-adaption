@@ -70,6 +70,7 @@ export type GameState = {
   turn: number;
   turnNumber: number;
   round: number;
+  roundStarterId: string;
   phase: Phase;
   dice: (Face | null)[];
   held: boolean[];
@@ -175,6 +176,7 @@ export function newGame(playerCount = 5, rng = Math.random): GameState {
     turn,
     turnNumber: 1,
     round: 1,
+    roundStarterId: players[turn].id,
     phase: players[turn].human ? "roll" : "bot",
     dice: Array(5).fill(null),
     held: Array(5).fill(false),
@@ -718,7 +720,13 @@ function finishTurn(game: GameState) {
   }
   let turn = next.turn;
   do turn = (turn + 1) % next.players.length; while (!next.players[turn].alive);
-  if (turn <= next.turn) next.round += 1;
+  let roundStarter = next.players.findIndex((player) => player.id === next.roundStarterId);
+  if (roundStarter < 0 || !next.players[roundStarter].alive) {
+    do roundStarter = (roundStarter + 1 + next.players.length) % next.players.length;
+    while (!next.players[roundStarter].alive);
+    next.roundStarterId = next.players[roundStarter].id;
+  }
+  if (next.players[turn].id === next.roundStarterId) next.round += 1;
   next.turn = turn;
   next.turnNumber += 1;
   next.dice = Array(5).fill(null);
