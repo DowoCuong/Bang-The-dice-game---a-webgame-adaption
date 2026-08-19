@@ -31,6 +31,17 @@ type Pending = {
   slabDouble: boolean;
 };
 
+export type GameEffectKind = "shot" | "beer" | "arrow" | "gatling" | "damage" | "skill";
+
+export type GameEffect = {
+  id: number;
+  kind: GameEffectKind;
+  sourceId?: string;
+  targetId?: string;
+  amount?: number;
+  label?: string;
+};
+
 export type GameState = {
   players: Player[];
   playerCount: number;
@@ -42,6 +53,9 @@ export type GameState = {
   rolls: number;
   arrowSupply: number;
   pending: Pending | null;
+  skillArmed: boolean;
+  effects: GameEffect[];
+  effectSeq: number;
   log: string[];
   winner: string | null;
 };
@@ -101,6 +115,15 @@ function note(game: GameState, message: string) {
   game.log = [message, ...game.log].slice(0, 50);
 }
 
+function emitEffect(game: GameState, effect: Omit<GameEffect, "id">) {
+  game.effectSeq += 1;
+  game.effects = [...game.effects, { id: game.effectSeq, ...effect }].slice(-40);
+}
+
+function emitSkill(game: GameState, sourceId: string, label: string, targetId?: string, amount?: number) {
+  emitEffect(game, { kind: "skill", sourceId, targetId, amount, label });
+}
+
 export function newGame(playerCount = 5, rng = Math.random): GameState {
   const count = Math.max(3, Math.min(8, playerCount));
   const roles = shuffle(roleSets[count], rng);
@@ -133,6 +156,9 @@ export function newGame(playerCount = 5, rng = Math.random): GameState {
     rolls: 0,
     arrowSupply: 9,
     pending: null,
+    skillArmed: false,
+    effects: [],
+    effectSeq: 0,
     log: [`${players[turn].name} bắt đầu ván với vai ${firstRole}.`],
     winner: null,
   };
@@ -175,10 +201,11 @@ export function eligibleTargetIds(game: GameState, face: "bull1" | "bull2") {
   });
 }
 
-function heal(game: GameState, id: string, amount: number, reason: string) {
+function heal(game: GameState, id: string, amount: number, reason: string, effect?: Omit<GameEffect, "id" | "amount">) {
   const player = game.players.find((candidate) => candidate.id === id);
   if (!player?.alive) return;
   const gained = Math.min(amount, player.maxHp - player.hp);
+  if (effect) emitEffect(game, { ...effect, amount: gained });
   if (gained > 0) {
     player.hp += gained;
     note(game, `${player.name} hồi ${gained} máu (${reason}).`);
@@ -225,7 +252,14 @@ function finishDeaths(game: GameState, killerId?: string) {
   }
   const deaths = eliminated.length;
   for (const player of game.players) {
-    if (player.alive && player.character.id === "vulture") heal(game, player.id, deaths * 2, "Vulture Sam");
+    if (player.alive && player.character.id === "vulture") {
+      heal(game, player.id, deaths * 2, "Vulture Sam", {
+        kind: "skill",
+        sourceId: player.id,
+        targetId: player.id,
+        label: "VULTURE SAM • HỒI MÁU KHI CÓ NGƯỜI BỊ LOẠI",
+      });
+    }
   }
   checkWinner(game, eliminated, killerId);
 }
@@ -235,6 +269,7 @@ function takeArrow(game: GameState, playerId: string) {
   if (!player?.alive || game.arrowSupply <= 0) return;
   player.arrows += 1;
   game.arrowSupply -= 1;
+  emitEffect(game, { kind: "arrow", targetId: player.id, amount: 1 });
   note(game, `${player.name} lấy 1 mũi tên.`);
   if (game.arrowSupply === 0) indianAttack(game);
 }
@@ -245,10 +280,15 @@ function damageGroup(game: GameState, damages: Map<string, number>, cause: "shoo
     const player = game.players.find((candidate) => candidate.id === id);
     if (!player?.alive || requested <= 0) continue;
     if (cause === "gatling" && player.character.id === "paul") {
+      emitEffect(game, { kind: "gatling", sourceId, targetId: player.id, amount: 0 });
+      emitSkill(game, player.id, "PAUL REGRET • MIỄN NHIỄM GATLING", player.id);
       note(game, `${player.name} miễn nhiễm Gatling.`);
       continue;
     }
     let amount = cause === "indian" && player.character.id === "jourdonnais" ? Math.min(1, requested) : requested;
+    if (cause === "indian" && player.character.id === "jourdonnais" && requested > 1) {
+      emitSkill(game, player.id, "JOURDONNAIS • CHỈ MẤT TỐI ĐA 1 MÁU", player.id);
+    }
     let replaced = 0;
     if ((cause === "shoot" || cause === "gatling") && player.character.id === "bart") {
       while (amount > 0 && game.arrowSupply > 1) {
@@ -257,26 +297,45 @@ function damageGroup(game: GameState, damages: Map<string, number>, cause: "shoo
         amount -= 1;
         replaced += 1;
       }
-      if (replaced) note(game, `${player.name} đổi ${replaced} sát thương lấy mũi tên.`);
+      if (replaced) {
+        emitSkill(game, player.id, "BART CASSIDY • ĐỔI SÁT THƯƠNG LẤY MŨI TÊN", player.id);
+        for (let i = 0; i < replaced; i++) emitEffect(game, { kind: "arrow", targetId: player.id, amount: 1 });
+        note(game, `${player.name} đổi ${replaced} sát thương lấy mũi tên.`);
+      }
     }
     const actual = Math.min(player.hp, amount);
     player.hp -= actual;
     lost.set(id, actual);
+    if (cause !== "shoot") {
+      emitEffect(game, {
+        kind: cause === "gatling" ? "gatling" : cause === "indian" ? "arrow" : "damage",
+        sourceId,
+        targetId: player.id,
+        amount: actual ? -actual : 0,
+      });
+    }
     if (actual) note(game, `${player.name} mất ${actual} máu (${cause}).`);
     if (actual && player.character.id === "pedro") {
       const removed = Math.min(actual, player.arrows);
       player.arrows -= removed;
       game.arrowSupply += removed;
-      if (removed) note(game, `${player.name} bỏ ${removed} mũi tên nhờ kỹ năng.`);
+      if (removed) {
+        emitSkill(game, player.id, "PEDRO RAMIREZ • BỎ MŨI TÊN SAU KHI MẤT MÁU", player.id);
+        note(game, `${player.name} bỏ ${removed} mũi tên nhờ kỹ năng.`);
+      }
     }
   }
   if ((cause === "shoot" || cause === "gatling") && sourceId) {
     for (const [id, amount] of lost) {
       const target = game.players.find((player) => player.id === id);
-      if (amount > 0 && target?.character.id === "el-gringo") takeArrow(game, sourceId);
+      if (amount > 0 && target?.character.id === "el-gringo") {
+        emitSkill(game, target.id, "EL GRINGO • KẺ TẤN CÔNG PHẢI LẤY MŨI TÊN", sourceId);
+        takeArrow(game, sourceId);
+      }
     }
   }
   finishDeaths(game, sourceId);
+  return lost;
 }
 
 function indianAttack(game: GameState) {
@@ -293,7 +352,12 @@ function applyStartAbility(game: GameState) {
   const ally = [...game.players]
     .filter((candidate) => candidate.alive && candidate.hp < candidate.maxHp)
     .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0] ?? player;
-  heal(game, ally.id, 1, "Sid Ketchum đầu lượt");
+  heal(game, ally.id, 1, "Sid Ketchum đầu lượt", {
+    kind: "skill",
+    sourceId: player.id,
+    targetId: ally.id,
+    label: "SID KETCHUM • HỒI 1 MÁU ĐẦU LƯỢT",
+  });
 }
 
 function rollFace(rng = Math.random): Face {
@@ -324,6 +388,11 @@ export function rollDice(game: GameState, rng = Math.random) {
   if (!canRoll(game)) return game;
   const next = clone(game);
   const blackJack = next.players[next.turn].character.id === "black-jack";
+  const usedBlackJack = blackJack && next.rolls > 0 && next.dice.some((face, index) => face === "dynamite" && !next.held[index]);
+  const usedLucky = next.players[next.turn].character.id === "lucky" && next.rolls === 3;
+  next.skillArmed = false;
+  if (usedBlackJack) emitSkill(next, next.players[next.turn].id, "BLACK JACK • TUNG LẠI THUỐC NỔ");
+  if (usedLucky) emitSkill(next, next.players[next.turn].id, "LUCKY DUKE • LẦN TUNG THỨ TƯ");
   const changed: number[] = [];
   for (let index = 0; index < 5; index++) {
     const current = next.dice[index];
@@ -355,7 +424,7 @@ export function beginResolution(game: GameState) {
   const next = clone(game);
   const shots = next.dice.filter((face): face is "bull1" | "bull2" => face === "bull1" || face === "bull2");
   let beers = next.dice.filter((face) => face === "beer").length;
-  const slabDouble = next.players[next.turn].character.id === "slab" && beers > 0 && shots.length > 0;
+  const slabDouble = next.players[next.turn].character.id === "slab" && next.skillArmed && beers > 0 && shots.length > 0;
   if (slabDouble) beers -= 1;
   next.pending = {
     shots,
@@ -367,6 +436,31 @@ export function beginResolution(game: GameState) {
   };
   next.phase = shots.length ? "shot" : beers ? "beer" : next.phase;
   if (!shots.length && !beers) return resolvePending(next);
+  return next;
+}
+
+export function canActivateSkill(game: GameState) {
+  if ((game.phase !== "roll" && game.phase !== "bot") || game.rolls === 0 || game.skillArmed) return false;
+  const character = game.players[game.turn].character.id;
+  if (character === "slab") {
+    return game.dice.includes("beer") && game.dice.some((face) => face === "bull1" || face === "bull2");
+  }
+  if (character === "kit") {
+    return game.dice.includes("gatling") && game.players.some((player) => player.alive && player.arrows > 0);
+  }
+  return false;
+}
+
+export function activateSkill(game: GameState) {
+  if (!canActivateSkill(game)) return game;
+  const next = clone(game);
+  const player = next.players[next.turn];
+  next.skillArmed = true;
+  const label = player.character.id === "slab"
+    ? "SLAB THE KILLER • ĐỔI 1 BIA ĐỂ BẮN 2 SÁT THƯƠNG"
+    : "KIT CARLSON • BỎ MŨI TÊN BẰNG GATLING";
+  emitSkill(next, player.id, label, player.id);
+  note(next, `${player.name} kích hoạt kỹ năng ${player.character.name}.`);
   return next;
 }
 
@@ -394,6 +488,15 @@ export function chooseTarget(game: GameState, targetId: string) {
   if (!game.pending || !selectableTargetIds(game).includes(targetId)) return game;
   const next = clone(game);
   if (next.phase === "shot") {
+    const shooter = next.players[next.turn];
+    const face = next.pending!.shots[next.pending!.shotTargets.length];
+    const targetIndex = next.players.findIndex((player) => player.id === targetId);
+    const distance = tableDistance(next, next.turn, targetIndex);
+    const shortGame = alivePlayers(next).length <= 3;
+    const janetRangeSwap = shooter.character.id === "janet" && ((face === "bull1" && distance === 2) || (face === "bull2" && !shortGame && distance === 1));
+    const roseExtendedRange = shooter.character.id === "rose" && ((face === "bull1" && distance === 2) || (face === "bull2" && distance === 3));
+    if (janetRangeSwap) emitSkill(next, shooter.id, "CALAMITY JANET • ĐỔI TẦM BẮN", targetId);
+    if (roseExtendedRange) emitSkill(next, shooter.id, "ROSE DOOLAN • BẮN XA HƠN", targetId);
     next.pending!.shotTargets.push(targetId);
     if (next.pending!.shotTargets.length === next.pending!.shots.length) {
       next.phase = next.pending!.beers ? "beer" : next.phase;
@@ -412,6 +515,7 @@ function discardKitArrows(game: GameState, count: number) {
     if (!target) return;
     target.arrows -= 1;
     game.arrowSupply += 1;
+    emitEffect(game, { kind: "arrow", sourceId: game.players[game.turn].id, targetId: target.id, amount: -1, label: "BỎ 1 MŨI TÊN" });
     note(game, `Kit Carlson bỏ 1 mũi tên của ${target.name}.`);
   }
 }
@@ -426,18 +530,29 @@ function resolvePending(game: GameState) {
     shots.set(target, (shots.get(target) ?? 0) + damage);
   });
   if (next.pending.slabDouble) note(next, "Slab the Killer đổi 1 Bia để tăng phát bắn lên 2 sát thương.");
-  damageGroup(next, shots, "shoot", shooter.id);
+  const shotDamage = damageGroup(next, shots, "shoot", shooter.id);
+  const remainingDamage = new Map(shotDamage);
+  next.pending.shotTargets.forEach((targetId, index) => {
+    const requested = next.pending!.slabDouble && index === 0 ? 2 : 1;
+    const actual = Math.min(requested, remainingDamage.get(targetId) ?? 0);
+    remainingDamage.set(targetId, (remainingDamage.get(targetId) ?? 0) - actual);
+    emitEffect(next, { kind: "shot", sourceId: shooter.id, targetId, amount: actual ? -actual : 0 });
+  });
   if (next.winner || !shooter.alive) return finishTurn(next);
 
   for (const id of next.pending.beerTargets) {
     const target = next.players.find((player) => player.id === id);
     const amount = target?.id === shooter.id && shooter.character.id === "jesse" && shooter.hp <= 4 ? 2 : 1;
-    heal(next, id, amount, "Bia");
+    if (amount === 2) emitSkill(next, shooter.id, "JESSE JONES • BIA HỒI 2 MÁU", id);
+    heal(next, id, amount, "Bia", { kind: "beer", sourceId: shooter.id, targetId: id });
   }
 
   const threshold = shooter.character.id === "willy" ? 2 : 3;
-  if (shooter.character.id === "kit") discardKitArrows(next, next.pending.gatlings);
+  if (shooter.character.id === "kit" && next.skillArmed) discardKitArrows(next, next.pending.gatlings);
   if (next.pending.gatlings >= threshold) {
+    if (shooter.character.id === "willy" && next.pending.gatlings === 2) {
+      emitSkill(next, shooter.id, "WILLY THE KID • GATLING CHỈ CẦN 2 BIỂU TƯỢNG", shooter.id);
+    }
     note(next, `${shooter.name} kích hoạt Gatling!`);
     const targets = new Map(next.players.filter((player) => player.alive && player.id !== shooter.id).map((player) => [player.id, 1]));
     damageGroup(next, targets, "gatling", shooter.id);
@@ -445,7 +560,12 @@ function resolvePending(game: GameState) {
     shooter.arrows = 0;
   }
   if (!next.winner && shooter.alive && shooter.character.id === "suzy" && next.pending.shots.length === 0) {
-    heal(next, shooter.id, 2, "Suzy Lafayette");
+    heal(next, shooter.id, 2, "Suzy Lafayette", {
+      kind: "skill",
+      sourceId: shooter.id,
+      targetId: shooter.id,
+      label: "SUZY LAFAYETTE • KHÔNG BẮN, HỒI 2 MÁU",
+    });
   }
   return finishTurn(next);
 }
@@ -453,6 +573,7 @@ function resolvePending(game: GameState) {
 function finishTurn(game: GameState) {
   const next = clone(game);
   next.pending = null;
+  next.skillArmed = false;
   if (next.winner) {
     next.phase = "over";
     return next;
@@ -512,6 +633,7 @@ export function playBotTurn(game: GameState, rng = Math.random) {
     next = chooseBotHolds(next);
     if (!canRoll(next)) break;
   }
+  if (next.phase === "bot" && canActivateSkill(next)) next = activateSkill(next);
   if (next.phase === "bot") next = beginResolution(next);
   while (next.phase === "shot" || next.phase === "beer") {
     const target = next.phase === "shot"

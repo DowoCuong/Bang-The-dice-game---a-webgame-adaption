@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
+  activateSkill,
   beginResolution,
+  canActivateSkill,
   canRoll,
   characters,
   chooseTarget,
@@ -14,9 +16,12 @@ import {
   rollDice,
   selectableTargetIds,
   toggleHeld,
+  type GameEffect,
   type GameState,
   type Role,
 } from "./game";
+
+type ActiveEffect = GameEffect & { uiDelay: number };
 
 const roleLabel: Record<Role, string> = {
   Sheriff: "CẢNH SÁT TRƯỞNG",
@@ -57,7 +62,10 @@ export default function Home() {
   const [logOpen, setLogOpen] = useState(false);
   const [nextCount, setNextCount] = useState(5);
   const [rolling, setRolling] = useState(false);
+  const [activeEffects, setActiveEffects] = useState<ActiveEffect[]>([]);
   const rollTimer = useRef<number | null>(null);
+  const effectTimers = useRef<number[]>([]);
+  const lastEffectId = useRef(0);
   const selectable = useMemo(() => new Set(selectableTargetIds(game)), [game]);
   const current = game.players[game.turn];
   const human = game.players.find((player) => player.human)!;
@@ -76,11 +84,37 @@ export default function Home() {
 
   useEffect(() => () => {
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
+    effectTimers.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
   useEffect(() => {
+    if (game.effectSeq < lastEffectId.current) {
+      lastEffectId.current = 0;
+      setActiveEffects([]);
+    }
+    const incoming = game.effects.filter((effect) => effect.id > lastEffectId.current);
+    if (!incoming.length) return;
+    lastEffectId.current = incoming.at(-1)!.id;
+    let uiDelay = 0;
+    const staged = incoming.map((effect, index): ActiveEffect => {
+      const previous = incoming[index - 1];
+      const sameGatlingVolley = effect.kind === "gatling" && previous?.kind === "gatling" && effect.sourceId === previous.sourceId;
+      if (index > 0 && !sameGatlingVolley) uiDelay = Math.min(uiDelay + 140, 420);
+      return { ...effect, uiDelay };
+    });
+    setActiveEffects((currentEffects) => [...currentEffects, ...staged]);
+    staged.forEach((effect) => {
+      const timer = window.setTimeout(() => {
+        setActiveEffects((currentEffects) => currentEffects.filter((item) => item.id !== effect.id));
+        effectTimers.current = effectTimers.current.filter((activeTimer) => activeTimer !== timer);
+      }, 1550 + effect.uiDelay);
+      effectTimers.current.push(timer);
+    });
+  }, [game.effects, game.effectSeq]);
+
+  useEffect(() => {
     if (game.phase !== "bot") return;
-    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 850);
+    const timer = window.setTimeout(() => setGame((state) => playBotTurn(state)), 1500);
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turn]);
 
@@ -98,9 +132,28 @@ export default function Home() {
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
     rollTimer.current = null;
     setRolling(false);
+    effectTimers.current.forEach((timer) => window.clearTimeout(timer));
+    effectTimers.current = [];
+    lastEffectId.current = 0;
+    setActiveEffects([]);
     setGame(newGame(nextCount));
     setSetupOpen(false);
     setLogOpen(false);
+  };
+
+  const effectPosition = (playerId?: string): [number, number] => {
+    if (!playerId) return [50, 50];
+    const playerIndex = game.players.findIndex((player) => player.id === playerId);
+    return seatLayout[game.playerCount][playerIndex] ?? [50, 50];
+  };
+
+  const effectImpact = (effect: GameEffect) => {
+    if (effect.label && effect.kind === "arrow") return effect.label;
+    if ((effect.amount ?? 0) < 0) return `${effect.amount} HP`;
+    if ((effect.amount ?? 0) > 0) return effect.kind === "arrow" ? `+${effect.amount} MŨI TÊN` : `+${effect.amount} HP`;
+    if (effect.kind === "beer") return "ĐẦY MÁU";
+    if (effect.kind === "gatling") return "MIỄN NHIỄM";
+    return "KHÔNG MẤT MÁU";
   };
 
   return (
@@ -181,6 +234,39 @@ export default function Home() {
             );
           })}
 
+          <div className="effect-layer" aria-live="assertive" aria-atomic="false">
+            {activeEffects.map((effect, index) => {
+              const [sourceX, sourceY] = effectPosition(effect.sourceId);
+              const [targetX, targetY] = effectPosition(effect.targetId);
+              const effectStyle = {
+                "--source-x": `${sourceX}%`,
+                "--source-y": `${sourceY}%`,
+                "--target-x": `${targetX}%`,
+                "--target-y": `${targetY}%`,
+                "--effect-delay": `${effect.uiDelay}ms`,
+                "--toast-offset": `${Math.min(activeEffects.slice(0, index).filter((item) => item.kind === "skill").length, 3) * 50}px`,
+              } as CSSProperties;
+              return (
+                <span className={`effect-event effect-${effect.kind}`} style={effectStyle} key={effect.id}>
+                  {effect.kind !== "skill" && effect.targetId && (
+                    <span className="effect-projectile" aria-hidden="true">
+                      {effect.kind === "shot" ? <img src="/effects/bull1.png" alt="" /> : effect.kind === "beer" ? "♨" : effect.kind === "gatling" ? "✹" : effect.kind === "arrow" ? "➹" : "▰"}
+                    </span>
+                  )}
+                  {effect.targetId && effect.amount !== undefined && effect.kind !== "skill" && (
+                    <span className="effect-impact">{effectImpact(effect)}</span>
+                  )}
+                  {effect.kind === "skill" && (
+                    <span className="skill-toast"><small>KỸ NĂNG KÍCH HOẠT</small>{effect.label}</span>
+                  )}
+                  {effect.kind === "skill" && effect.targetId && (effect.amount ?? 0) > 0 && (
+                    <span className="effect-impact">+{effect.amount} HP</span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+
           <div className="turn-panel">
             <div className="supply"><span>CHỒNG MŨI TÊN</span><b>➹ {game.arrowSupply}/9</b></div>
             <div className={`dice-tray ${diceMoving ? "rolling" : ""}`} aria-label="Năm xúc xắc" aria-busy={diceMoving}>
@@ -208,6 +294,15 @@ export default function Home() {
                   <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !canRoll(game)}>
                     {rolling ? "ĐANG TUNG…" : game.rolls ? "TUNG LẠI" : "TUNG XÚC XẮC"} <kbd>SPACE</kbd>
                   </button>
+                  {(canActivateSkill(game) || game.skillArmed) && (
+                    <button
+                      className={`skill-button ${game.skillArmed ? "armed" : ""}`}
+                      onClick={() => setGame((state) => activateSkill(state))}
+                      disabled={rolling || game.skillArmed}
+                    >
+                      {game.skillArmed ? "✓ ĐÃ KÍCH HOẠT" : `KÍCH HOẠT ${current.character.name.toUpperCase()}`}
+                    </button>
+                  )}
                   {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))} disabled={rolling}>CHỐT KẾT QUẢ</button>}
                 </>
               )}
