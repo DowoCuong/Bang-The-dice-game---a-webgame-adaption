@@ -14,6 +14,7 @@ import {
   maxRolls,
   newGame,
   playBotTurn,
+  resolveChoices,
   rollDice,
   selectableTargetIds,
   skipKitArrow,
@@ -173,11 +174,12 @@ export default function Home() {
       setActiveEffects((currentEffects) => [...currentEffects, ...staged]);
     }
     staged.forEach((effect) => {
-      effectQueueEnd.current = Math.max(effectQueueEnd.current, now + 3700 + effect.uiDelay);
+      const duration = effect.kind === "target" ? 1700 : 3700;
+      effectQueueEnd.current = Math.max(effectQueueEnd.current, now + duration + effect.uiDelay);
       const timer = window.setTimeout(() => {
         setActiveEffects((currentEffects) => currentEffects.filter((item) => item.id !== effect.id));
         effectTimers.current = effectTimers.current.filter((activeTimer) => activeTimer !== timer);
-      }, 3700 + effect.uiDelay);
+      }, duration + effect.uiDelay);
       effectTimers.current.push(timer);
     });
 
@@ -228,6 +230,12 @@ export default function Home() {
     }, 900);
     return () => window.clearTimeout(timer);
   }, [game.phase, game.turn, turnReady]);
+
+  useEffect(() => {
+    if (game.phase !== "resolving" || !turnReady) return;
+    const timer = window.setTimeout(() => setGame((state) => resolveChoices(state)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [game.phase, game.turnNumber, turnReady]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -332,7 +340,7 @@ export default function Home() {
                   "--y": `${y}%`,
                 } as CSSProperties}
                 key={player.id}
-                onClick={() => targetable && setGame((state) => chooseTarget(state, player.id))}
+                onClick={() => targetable && setGame((state) => chooseTarget(state, player.id, true))}
                 disabled={!targetable}
                 aria-label={`${player.name}, ${player.character.name}, ${player.hp} máu, ${player.arrows} mũi tên${targetable ? ", chọn làm mục tiêu" : ""}`}
               >
@@ -386,7 +394,27 @@ export default function Home() {
           })}
 
           <div className="effect-layer" aria-live="assertive" aria-atomic="false">
-            {activeEffects.filter((effect) => effect.kind !== "skill" && effect.targetId).map((effect) => {
+            {activeEffects.filter((effect) => effect.kind === "target" && effect.targetId).map((effect) => {
+              const [sourceX, sourceY] = effectPosition(effect.sourceId);
+              const [targetX, targetY] = effectPosition(effect.targetId);
+              return (
+                <span
+                  className={`target-cue target-${effect.label ?? "bull1"}`}
+                  style={{
+                    "--source-x": `${sourceX}%`,
+                    "--source-y": `${sourceY}%`,
+                    "--target-x": `${targetX}%`,
+                    "--target-y": `${targetY}%`,
+                    "--effect-delay": `${effect.uiDelay}ms`,
+                  } as CSSProperties}
+                  key={effect.id}
+                >
+                  <span className="target-cue-arrow" aria-hidden="true">➤</span>
+                  <small>{effect.label === "beer" ? "BIA" : effect.label === "arrow" ? "MŨI TÊN" : effect.label === "bull2" ? "TẦM 2" : "TẦM 1"}</small>
+                </span>
+              );
+            })}
+            {activeEffects.filter((effect) => effect.kind !== "skill" && effect.kind !== "target" && effect.targetId).map((effect) => {
               const [sourceX, sourceY] = effectPosition(effect.sourceId);
               const [targetX, targetY] = effectPosition(effect.targetId);
               const effectStyle = {
@@ -467,7 +495,7 @@ export default function Home() {
                   NHÂN ĐÔI PHÁT BẮN NÀY
                 </button>
               )}
-              {(game.phase === "shot" || game.phase === "beer" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
+              {(game.phase === "shot" || game.phase === "beer" || game.phase === "resolving" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
               {game.phase === "kit" && <button className="resolve-button" onClick={() => setGame((state) => skipKitArrow(state))}>BỎ QUA GATLING NÀY</button>}
               {game.phase === "ability" && game.decision && (
                 <div className="ability-choice">

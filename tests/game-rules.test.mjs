@@ -11,6 +11,7 @@ import {
   eligibleTargetIds,
   newGame,
   playBotTurn,
+  resolveChoices,
   rollDice,
   selectableTargetIds,
   skipKitArrow,
@@ -71,7 +72,9 @@ test("a bot completes its turn and passes play", () => {
   const game = newGame(4, middle);
   game.turn = 1;
   game.phase = "bot";
-  const next = playBotTurn(game, () => 0.75);
+  const choices = playBotTurn(game, () => 0.75);
+  assert.equal(choices.phase, "resolving");
+  const next = resolveChoices(choices);
   assert.notEqual(next.turn, 1);
   assert.equal(next.rolls, 0);
   assert.equal(next.lastTurnResult.playerId, "p1");
@@ -229,7 +232,12 @@ test("shots, beer and Gatling emit source-to-target animation events", () => {
   shotGame.dice = ["bull1", "bull1", "dynamite", "gatling", "gatling"];
   const aiming = beginResolution(shotGame);
   const target = eligibleTargetIds(aiming, "bull1")[0];
-  const shot = chooseTarget(chooseTarget(aiming, target), target);
+  const firstAim = chooseTarget(aiming, target);
+  assert.ok(firstAim.effects.some((effect) => effect.kind === "target" && effect.sourceId === "p0" && effect.targetId === target && effect.label === "bull1"));
+  const lockedShots = chooseTarget(firstAim, target, true);
+  assert.equal(lockedShots.phase, "resolving");
+  assert.equal(lockedShots.players.find((player) => player.id === target).hp, aiming.players.find((player) => player.id === target).hp);
+  const shot = resolveChoices(lockedShots);
   const shotEffects = shot.effects.filter((effect) => effect.kind === "shot" && effect.sourceId === "p0" && effect.targetId === target);
   assert.equal(shotEffects.length, 2);
   assert.ok(shotEffects.every((effect) => effect.amount === -1));
@@ -241,7 +249,11 @@ test("shots, beer and Gatling emit source-to-target animation events", () => {
   beerGame.rolls = 1;
   beerGame.dice = ["beer", "dynamite", "dynamite", "gatling", "gatling"];
   const drinking = beginResolution(beerGame);
-  const beer = chooseTarget(drinking, "p0");
+  const lockedBeer = chooseTarget(drinking, "p0", true);
+  assert.equal(lockedBeer.phase, "resolving");
+  assert.equal(lockedBeer.players[0].hp, drinking.players[0].hp);
+  const beer = resolveChoices(lockedBeer);
+  assert.ok(beer.effects.some((effect) => effect.kind === "target" && effect.sourceId === "p0" && effect.targetId === "p0" && effect.label === "beer"));
   assert.ok(beer.effects.some((effect) => effect.kind === "beer" && effect.sourceId === "p0" && effect.targetId === "p0" && effect.amount === 1));
 
   const gatlingGame = newGame(4, middle);
@@ -257,7 +269,8 @@ test("shots, beer and Gatling emit source-to-target animation events", () => {
 test("table notifications remain visible for about three seconds", () => {
   const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(page, /3700 \+ effect\.uiDelay/);
+  assert.match(page, /effect\.kind === "target" \? 1700 : 3700/);
+  assert.match(page, /resolveChoices\(state\)\)\, 1000/);
   assert.match(styles, /animation: effect-impact 3s/);
   assert.match(styles, /animation: skill-announcement 3s/);
   assert.match(page, /skillQueueEnd\.current = startsAt \+ 3100/);

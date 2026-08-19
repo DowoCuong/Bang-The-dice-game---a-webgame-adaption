@@ -1,6 +1,6 @@
 export type Role = "Sheriff" | "Deputy" | "Outlaw" | "Renegade";
 export type Face = "arrow" | "dynamite" | "bull1" | "bull2" | "beer" | "gatling";
-export type Phase = "roll" | "bot" | "sid" | "shot" | "beer" | "kit" | "ability" | "over";
+export type Phase = "roll" | "bot" | "sid" | "shot" | "beer" | "resolving" | "kit" | "ability" | "over";
 type DamageCause = "shoot" | "gatling" | "indian" | "dynamite";
 type DamageResume = "shots" | "gatling" | "dynamite";
 
@@ -46,7 +46,7 @@ export type AbilityDecision = {
   resume: DamageResume;
 };
 
-export type GameEffectKind = "shot" | "beer" | "arrow" | "gatling" | "damage" | "skill";
+export type GameEffectKind = "target" | "shot" | "beer" | "arrow" | "gatling" | "damage" | "skill";
 
 export type GameEffect = {
   id: number;
@@ -537,6 +537,7 @@ export function currentPrompt(game: GameState) {
     return `Chọn mục tiêu cho ${faceInfo[face].label}`;
   }
   if (game.phase === "beer") return "Chọn người nhận Bia";
+  if (game.phase === "resolving") return "Mục tiêu đã khóa • hành động sau 1 giây";
   if (game.phase === "kit" && game.pending) return `Kit Carlson: chọn mũi tên để bỏ (${game.pending.kitRemaining} lượt còn lại)`;
   if (game.phase === "sid") return "Sid Ketchum: chọn người hồi 1 máu";
   if (game.phase === "ability" && game.decision) {
@@ -560,11 +561,12 @@ export function selectableTargetIds(game: GameState) {
   return [];
 }
 
-export function chooseTarget(game: GameState, targetId: string) {
+export function chooseTarget(game: GameState, targetId: string, deferResolution = false) {
   if (!selectableTargetIds(game).includes(targetId)) return game;
   const next = clone(game);
   if (next.phase === "sid") {
     const sid = next.players[next.turn];
+    emitEffect(next, { kind: "target", sourceId: sid.id, targetId, label: "beer" });
     heal(next, targetId, 1, "Sid Ketchum đầu lượt", {
       kind: "skill",
       sourceId: sid.id,
@@ -578,6 +580,7 @@ export function chooseTarget(game: GameState, targetId: string) {
   if (next.phase === "kit") {
     const target = next.players.find((player) => player.id === targetId)!;
     const kit = next.players[next.turn];
+    emitEffect(next, { kind: "target", sourceId: kit.id, targetId, label: "arrow" });
     target.arrows -= 1;
     next.arrowSupply += 1;
     next.pending.kitRemaining -= 1;
@@ -596,17 +599,34 @@ export function chooseTarget(game: GameState, targetId: string) {
     const shortGame = alivePlayers(next).length <= 3;
     const janetRangeSwap = shooter.character.id === "janet" && ((face === "bull1" && distance === 2) || (face === "bull2" && !shortGame && distance === 1));
     const roseExtendedRange = shooter.character.id === "rose" && ((face === "bull1" && distance === 2) || (face === "bull2" && distance === 3));
+    emitEffect(next, { kind: "target", sourceId: shooter.id, targetId, label: face });
     if (janetRangeSwap) emitSkill(next, shooter.id, "CALAMITY JANET • ĐỔI TẦM BẮN", targetId);
     if (roseExtendedRange) emitSkill(next, shooter.id, "ROSE DOOLAN • BẮN XA HƠN", targetId);
     next.pending!.shotTargets.push(targetId);
     if (next.pending!.shotTargets.length === next.pending!.shots.length) {
+      if (deferResolution) {
+        next.phase = next.pending!.beers ? "beer" : "resolving";
+        return next;
+      }
       return resolvePending(next);
     }
   } else if (next.phase === "beer") {
+    emitEffect(next, { kind: "target", sourceId: next.players[next.turn].id, targetId, label: "beer" });
     next.pending!.beerTargets.push(targetId);
-    if (next.pending!.beerTargets.length === next.pending!.beers) return resolvePending(next);
+    if (next.pending!.beerTargets.length === next.pending!.beers) {
+      if (deferResolution) {
+        next.phase = "resolving";
+        return next;
+      }
+      return resolvePending(next);
+    }
   }
   return next;
+}
+
+export function resolveChoices(game: GameState) {
+  if (game.phase !== "resolving" || !game.pending) return game;
+  return resolvePending(game);
 }
 
 export function skipKitArrow(game: GameState) {
@@ -803,7 +823,7 @@ export function playBotTurn(game: GameState, rng = Math.random) {
       else break;
       continue;
     }
-    next = chooseTarget(next, target);
+    next = chooseTarget(next, target, true);
   }
   return next;
 }
