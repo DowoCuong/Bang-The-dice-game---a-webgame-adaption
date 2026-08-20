@@ -15,6 +15,7 @@ import {
   rollDice,
   selectableTargetIds,
   skipKitArrow,
+  skipSkill,
   tableDistance,
 } from "../app/game.ts";
 
@@ -104,6 +105,21 @@ test("Slab the Killer chooses exactly which shot to double", () => {
   assert.equal(shotEffects.find((effect) => effect.targetId === secondTarget).amount, -2);
 });
 
+test("Slab the Killer may explicitly decline a shot and decide again on the next one", () => {
+  const game = newGame(5, middle);
+  game.turn = 0;
+  game.phase = "roll";
+  game.players[0].character = characters.find((character) => character.id === "slab");
+  game.rolls = 1;
+  game.dice = ["bull1", "bull2", "beer", "dynamite", "dynamite"];
+
+  const firstShot = beginResolution(game);
+  const skipped = skipSkill(firstShot);
+  assert.equal(canActivateSkill(skipped), false);
+  const secondShot = chooseTarget(skipped, eligibleTargetIds(skipped, "bull1")[0]);
+  assert.equal(canActivateSkill(secondShot), true);
+});
+
 test("Kit Carlson chooses or skips each Gatling arrow removal", () => {
   const game = newGame(4, middle);
   game.turn = 0;
@@ -125,6 +141,41 @@ test("Kit Carlson chooses or skips each Gatling arrow removal", () => {
   const skippedOne = skipKitArrow(usedOne);
   assert.equal(skippedOne.players[2].arrows, 1);
   assert.ok(skippedOne.effects.some((effect) => effect.kind === "skill" && effect.label.includes("KIT CARLSON")));
+});
+
+test("bot-owned Kit Carlson decisions never wait for the human player", () => {
+  const game = newGame(4, middle);
+  game.turn = 1;
+  game.phase = "bot";
+  game.players[1].character = characters.find((character) => character.id === "kit");
+  game.players[0].arrows = 2;
+  game.arrowSupply = 7;
+  game.rolls = 1;
+  game.dice = ["gatling", "gatling", "dynamite", "dynamite", "dynamite"];
+
+  const kitChoice = beginResolution(game);
+  assert.equal(kitChoice.phase, "kit");
+  const completed = playBotTurn(kitChoice, middle);
+  assert.notEqual(completed.phase, "kit");
+  assert.equal(completed.players[0].arrows, 2);
+  assert.ok(completed.log.some((entry) => entry.includes("không dùng")));
+});
+
+test("a bot may decline Slab the Killer instead of forcing activation", () => {
+  const game = newGame(5, middle);
+  game.turn = 1;
+  game.phase = "bot";
+  game.players[1].character = characters.find((character) => character.id === "slab");
+  game.players[1].hp -= 1;
+  game.players[0].hp = game.players[0].maxHp;
+  game.rolls = 1;
+  game.dice = ["bull1", "beer", "dynamite", "dynamite", "dynamite"];
+
+  const choosing = beginResolution(game);
+  const completed = playBotTurn(choosing, middle);
+  assert.equal(completed.pending.slabDoubleIndex, null);
+  assert.equal(completed.pending.beers, 1);
+  assert.ok(completed.log.some((entry) => entry.includes("không kích hoạt")));
 });
 
 function incomingShot(characterId, arrows = 0) {

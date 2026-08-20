@@ -33,6 +33,7 @@ type Pending = {
   beerTargetEffectIds: number[];
   gatlings: number;
   slabDoubleIndex: number | null;
+  slabSkippedIndex: number | null;
   shotsResolved: boolean;
   beersResolved: boolean;
   kitRemaining: number;
@@ -354,7 +355,9 @@ function damageGroup(
     }
     let replaced = 0;
     if ((cause === "shoot" || cause === "gatling") && player.character.id === "bart") {
-      const replaceLimit = player.human ? (choice?.kind === "bart" ? choice.count : 0) : amount;
+      const replaceLimit = player.human
+        ? (choice?.kind === "bart" ? choice.count : 0)
+        : player.hp <= amount ? amount : 0;
       while (amount > 0 && game.arrowSupply > 1 && replaced < replaceLimit) {
         player.arrows += 1;
         game.arrowSupply -= 1;
@@ -508,6 +511,7 @@ export function beginResolution(game: GameState) {
     beerTargetEffectIds: [],
     gatlings,
     slabDoubleIndex: null,
+    slabSkippedIndex: null,
     shotsResolved: false,
     beersResolved: false,
     kitRemaining: next.players[next.turn].character.id === "kit" ? gatlings : 0,
@@ -523,6 +527,7 @@ export function canActivateSkill(game: GameState) {
     && !!game.pending
     && game.pending.beers > 0
     && game.pending.slabDoubleIndex === null
+    && game.pending.slabSkippedIndex !== game.pending.shotTargets.length
     && game.pending.shotTargets.length < game.pending.shots.length;
 }
 
@@ -534,6 +539,15 @@ export function activateSkill(game: GameState) {
   next.pending!.beers -= 1;
   emitSkill(next, player.id, "SLAB THE KILLER • ĐỔI 1 BIA ĐỂ NHÂN ĐÔI PHÁT BẮN NÀY", player.id);
   note(next, `${player.name} kích hoạt kỹ năng ${player.character.name}.`);
+  return next;
+}
+
+export function skipSkill(game: GameState) {
+  if (!canActivateSkill(game)) return game;
+  const next = clone(game);
+  const player = next.players[next.turn];
+  next.pending!.slabSkippedIndex = next.pending!.shotTargets.length;
+  note(next, `${player.name} không kích hoạt kỹ năng ${player.character.name} cho phát bắn này.`);
   return next;
 }
 
@@ -809,6 +823,21 @@ function botBeerTarget(game: GameState) {
   return [...allies].sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0]?.id ?? current.id;
 }
 
+function botKitTarget(game: GameState) {
+  const current = game.players[game.turn];
+  return [...game.players]
+    .filter((player) => player.alive && player.arrows > 0 && (player.id === current.id || rolesAreAllies(current.role, player.role)))
+    .sort((a, b) => b.arrows - a.arrows)[0]?.id;
+}
+
+function botShouldActivateSlab(game: GameState, targetId?: string) {
+  const current = game.players[game.turn];
+  const target = game.players.find((player) => player.id === targetId);
+  return !!target
+    && !rolesAreAllies(current.role, target.role)
+    && (current.hp === current.maxHp || target.hp <= 2);
+}
+
 function chooseBotHolds(game: GameState) {
   const next = clone(game);
   const player = next.players[next.turn];
@@ -823,23 +852,27 @@ function chooseBotHolds(game: GameState) {
 }
 
 export function playBotTurn(game: GameState, rng = Math.random) {
-  if (game.phase !== "bot" || game.players[game.turn].human) return game;
+  if (game.players[game.turn].human || !["bot", "shot", "beer", "kit"].includes(game.phase)) return game;
   let next = game;
-  while (canRoll(next)) {
-    next = rollDice(next, rng);
-    if (next.winner || next.phase !== "bot") break;
-    if (next.rolls >= maxRolls(next)) break;
-    next = chooseBotHolds(next);
-    if (!canRoll(next)) break;
+  if (next.phase === "bot") {
+    while (canRoll(next)) {
+      next = rollDice(next, rng);
+      if (next.winner || next.phase !== "bot") break;
+      if (next.rolls >= maxRolls(next)) break;
+      next = chooseBotHolds(next);
+      if (!canRoll(next)) break;
+    }
+    if (next.phase === "bot") next = beginResolution(next);
   }
-  if (next.phase === "bot") next = beginResolution(next);
   while (next.phase === "shot" || next.phase === "beer" || next.phase === "kit") {
-    if (next.phase === "shot" && canActivateSkill(next)) next = activateSkill(next);
     const target = next.phase === "shot"
       ? botShotTarget(next, next.pending!.shots[next.pending!.shotTargets.length])
       : next.phase === "beer"
         ? botBeerTarget(next)
-        : [...next.players].filter((player) => player.alive && player.arrows > 0).sort((a, b) => b.arrows - a.arrows)[0]?.id;
+        : botKitTarget(next);
+    if (next.phase === "shot" && canActivateSkill(next)) {
+      next = botShouldActivateSlab(next, target) ? activateSkill(next) : skipSkill(next);
+    }
     if (!target) {
       if (next.phase === "kit") next = skipKitArrow(next);
       else break;

@@ -18,6 +18,7 @@ import {
   rollDice,
   selectableTargetIds,
   skipKitArrow,
+  skipSkill,
   toggleHeld,
   type GameEffect,
   type GameState,
@@ -88,7 +89,16 @@ export default function Home() {
   const previousHp = useRef<Record<string, number>>({});
   const healthPulseSequence = useRef(0);
   const turnReady = readyTurn === game.turnNumber && transitionStage === null;
-  const selectable = useMemo(() => new Set(turnReady ? selectableTargetIds(game) : []), [game, turnReady]);
+  const current = game.players[game.turn];
+  const decisionOwner = game.decision
+    ? game.players.find((player) => player.id === game.decision!.playerId)
+    : current;
+  const humanDecision = !!decisionOwner?.human;
+  const botDecision = !current.human && ["bot", "shot", "beer", "kit"].includes(game.phase);
+  const selectable = useMemo(
+    () => new Set(turnReady && humanDecision ? selectableTargetIds(game) : []),
+    [game, turnReady, humanDecision],
+  );
   const skillEffects = useMemo(() => activeEffects.filter((effect) => effect.kind === "skill"), [activeEffects]);
   const impactGroups = useMemo(() => {
     const groups = new Map<string, ActiveEffect[]>();
@@ -98,7 +108,6 @@ export default function Home() {
     }
     return [...groups.values()];
   }, [activeEffects]);
-  const current = game.players[game.turn];
   const human = game.players.find((player) => player.human)!;
   const shownResult = !turnReady && game.lastTurnResult && (
     game.lastTurnResult.turnNumber === game.turnNumber - 1
@@ -241,14 +250,15 @@ export default function Home() {
   }, [game.effects, game.effectSeq, game.turnNumber, game.winner, introSerial]);
 
   useEffect(() => {
-    if (game.phase !== "bot" || !turnReady) return;
-    setBotRolling(true);
+    if (!botDecision || !turnReady) return;
+    const rollingDice = game.phase === "bot";
+    setBotRolling(rollingDice);
     const timer = window.setTimeout(() => {
       setGame((state) => playBotTurn(state));
-      setBotRolling(false);
+      if (rollingDice) setBotRolling(false);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [game.phase, game.turn, turnReady]);
+  }, [botDecision, game.phase, game.turn, turnReady]);
 
   useEffect(() => {
     if (game.phase !== "resolving" || !turnReady) return;
@@ -540,14 +550,19 @@ export default function Home() {
                   {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))} disabled={rolling}>CHỐT KẾT QUẢ</button>}
                 </>
               )}
-              {game.phase === "shot" && canActivateSkill(game) && (
-                <button className="skill-button" onClick={() => setGame((state) => activateSkill(state))}>
-                  NHÂN ĐÔI PHÁT BẮN NÀY
-                </button>
+              {humanDecision && game.phase === "shot" && canActivateSkill(game) && (
+                <>
+                  <button className="skill-button" onClick={() => setGame((state) => activateSkill(state))}>
+                    NHÂN ĐÔI PHÁT BẮN NÀY
+                  </button>
+                  <button className="resolve-button" onClick={() => setGame((state) => skipSkill(state))}>
+                    KHÔNG KÍCH HOẠT
+                  </button>
+                </>
               )}
-              {(game.phase === "shot" || game.phase === "beer" || game.phase === "resolving" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
-              {game.phase === "kit" && <button className="resolve-button" onClick={() => setGame((state) => skipKitArrow(state))}>BỎ QUA GATLING NÀY</button>}
-              {game.phase === "ability" && game.decision && (
+              {humanDecision && (game.phase === "shot" || game.phase === "beer" || game.phase === "resolving" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
+              {humanDecision && game.phase === "kit" && <button className="resolve-button" onClick={() => setGame((state) => skipKitArrow(state))}>KHÔNG KÍCH HOẠT</button>}
+              {humanDecision && game.phase === "ability" && game.decision && (
                 <div className="ability-choice">
                   <strong>{currentPrompt(game)}</strong>
                   <div>
@@ -559,7 +574,7 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              {game.phase === "bot" && turnReady && <div className="bot-thinking"><i /><i /><i /> {current.name} đang tung…</div>}
+              {botDecision && turnReady && <div className="bot-thinking"><i /><i /><i /> {current.name} {game.phase === "bot" ? "đang tung…" : "đang quyết định kỹ năng…"}</div>}
               {game.phase === "over" && <button className="roll-button" onClick={() => setSetupOpen(true)}>CHƠI VÁN MỚI</button>}
             </div>
             {game.phase === "roll" && <p aria-live="polite">{rolling ? "Xúc xắc đang lăn…" : `Lần tung ${game.rolls}/${maxRolls(game)} · Bấm xúc xắc để giữ`}</p>}
