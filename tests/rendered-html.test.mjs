@@ -12,26 +12,16 @@ async function render() {
   );
 }
 
-test("renders the playable western table", async () => {
+test("renders the mode selection before the western table", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /<title>BANG! Dice — Web Game<\/title>/i);
-  assert.match(html, /CHỒNG MŨI TÊN/);
-  assert.match(html, /class="dice-tray(?: rolling)?"/);
-  assert.match(html, /src="\/dice\/dynamite-tnt\.png"/);
-  assert.match(html, /class="character-strip" src="\/characters\//);
-  assert.match(html, /class="character-copy"/);
-  assert.match(html, /class="bullet-stack"/);
-  assert.match(html, /class="role-photo sheriff"/);
-  assert.match(html, /class="sheriff-badge"/);
-  assert.doesNotMatch(html, /class="role-card/);
-  assert.match(html, /class="game-shell top-collapsed bottom-collapsed"/);
-  assert.match(html, /class="panel-toggle top-panel-toggle"/);
-  assert.match(html, /class="panel-toggle bottom-panel-toggle"/);
-  assert.doesNotMatch(html, /class="felt-lines"/);
-  assert.match(html, /VÁN MỚI/);
+  assert.match(html, /class="welcome-screen"/);
+  assert.match(html, /class="welcome-art"/);
+  assert.match(html, /CHƠI VỚI BOT/);
   assert.match(html, /MULTIPLAYER/);
-  assert.match(html, /VAI CỦA BẠN/);
+  assert.doesNotMatch(html, /class="game-shell/);
+  assert.doesNotMatch(html, /class="dice-tray/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

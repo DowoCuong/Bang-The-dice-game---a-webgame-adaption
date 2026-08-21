@@ -97,6 +97,7 @@ export default function Home() {
   const [roomLoading, setRoomLoading] = useState(false);
   const [roomError, setRoomError] = useState("");
   const [actionPending, setActionPending] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(true);
   const [setupOpen, setSetupOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -416,13 +417,13 @@ export default function Home() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || rolling || !canControl || !canRoll(game)) return;
+      if (event.code !== "Space" || welcomeOpen || setupOpen || rulesOpen || logOpen || rolling || !canControl || !canRoll(game)) return;
       event.preventDefault();
       rollWithAnimation();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [game, setupOpen, rulesOpen, logOpen, rolling, canControl, rollWithAnimation]);
+  }, [game, welcomeOpen, setupOpen, rulesOpen, logOpen, rolling, canControl, rollWithAnimation]);
 
   const startGame = () => {
     if (roomSession && room?.status === "waiting") {
@@ -489,6 +490,12 @@ export default function Home() {
     sendRoomMessage({ type: "leave" });
   };
 
+  const chooseMode = (mode: SetupMode) => {
+    setSetupMode(mode);
+    setWelcomeOpen(false);
+    setSetupOpen(true);
+  };
+
   const effectPosition = (playerId?: string): [number, number] => {
     if (!playerId) return [50, 50];
     const playerIndex = game.players.findIndex((player) => player.id === playerId);
@@ -503,6 +510,21 @@ export default function Home() {
     if (effect.kind === "gatling") return "MIỄN NHIỄM";
     return "KHÔNG MẤT MÁU";
   };
+
+  if (welcomeOpen) {
+    return (
+      <main className="welcome-screen">
+        <div className="welcome-art" role="img" aria-label="BANG! Dice, trò chơi xúc xắc miền Viễn Tây cho 3 đến 8 người" />
+        <section className="welcome-actions" aria-label="Chọn chế độ chơi">
+          <p>CHỌN CÁCH CHƠI</p>
+          <div>
+            <button onClick={() => chooseMode("solo")}>CHƠI VỚI BOT</button>
+            <button onClick={() => chooseMode("multiplayer")}>MULTIPLAYER</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className={`game-shell ${topPanelOpen ? "" : "top-collapsed"} ${bottomPanelOpen ? "" : "bottom-collapsed"}`}>
