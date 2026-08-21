@@ -21,6 +21,7 @@ import {
 
 type ConnectionState = { playerId: string; token: string };
 const STATE_KEY = "state";
+const ROOM_IDLE_MS = 5 * 60 * 1000;
 
 function send(connection: Connection, message: RoomServerMessage) {
   connection.send(JSON.stringify(message));
@@ -33,6 +34,7 @@ function validToken(token: string) {
 type Env = Cloudflare.Env & { Main: DurableObjectNamespace<GameRoom> };
 
 export class GameRoom extends Server<Env> {
+  static options = { hibernate: true };
   state: RoomState | null = null;
 
   async onStart() {
@@ -50,6 +52,7 @@ export class GameRoom extends Server<Env> {
       let player = this.state?.players.find((candidate) => candidate.token === token);
       if (player) {
         connection.setState({ playerId: player.id, token });
+        await this.scheduleExpiry();
         this.sendSnapshot(connection);
         return;
       }
@@ -84,6 +87,15 @@ export class GameRoom extends Server<Env> {
       this.sendSnapshots();
     } catch (error) {
       this.fail(connection, error, true);
+    }
+  }
+
+  async onAlarm() {
+    this.state = null;
+    await this.ctx.storage.delete(STATE_KEY);
+    for (const connection of this.getConnections()) {
+      send(connection, { type: "error", message: "Phòng đã hết hạn sau 5 phút không hoạt động.", fatal: true });
+      connection.close(1000, "Room expired");
     }
   }
 
@@ -133,7 +145,10 @@ export class GameRoom extends Server<Env> {
 
     if (!remaining.length) {
       this.state = null;
-      await this.ctx.storage.delete(STATE_KEY);
+      await Promise.all([
+        this.ctx.storage.delete(STATE_KEY),
+        this.ctx.storage.deleteAlarm(),
+      ]);
       return;
     }
 
@@ -150,7 +165,15 @@ export class GameRoom extends Server<Env> {
   }
 
   private async persist() {
-    if (this.state) await this.ctx.storage.put(STATE_KEY, this.state);
+    if (!this.state) return;
+    await Promise.all([
+      this.ctx.storage.put(STATE_KEY, this.state),
+      this.scheduleExpiry(),
+    ]);
+  }
+
+  private async scheduleExpiry() {
+    await this.ctx.storage.setAlarm(Date.now() + ROOM_IDLE_MS);
   }
 
   private sendSnapshot(connection: Connection<ConnectionState>) {

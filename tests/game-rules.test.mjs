@@ -28,6 +28,14 @@ test("rejects unknown multiplayer actions without corrupting room state", () => 
   assert.throws(() => applyRoomAction(game, { type: "unknown" }), /Hành động không hợp lệ/);
 });
 
+test("hibernates rooms and expires them after five idle minutes", () => {
+  const server = readFileSync(new URL("../party/index.ts", import.meta.url), "utf8");
+  assert.match(server, /static options = \{ hibernate: true \}/);
+  assert.match(server, /const ROOM_IDLE_MS = 5 \* 60 \* 1000/);
+  assert.match(server, /setAlarm\(Date\.now\(\) \+ ROOM_IDLE_MS\)/);
+  assert.match(server, /async onAlarm\(\)[\s\S]*storage\.delete\(STATE_KEY\)/);
+});
+
 test("creates the official player and role counts", () => {
   for (let count = 3; count <= 8; count++) {
     const game = newGame(count, middle);
