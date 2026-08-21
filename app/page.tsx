@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import PartySocket from "partysocket";
 import {
   activateSkill,
   beginResolution,
@@ -24,56 +25,28 @@ import {
   type GameState,
   type Role,
 } from "./game";
+import type { RoomAction, RoomClientMessage, RoomServerMessage, RoomSnapshot } from "./room";
 
 type ActiveEffect = GameEffect & { uiDelay: number };
 type TransitionStage = "waiting" | "round" | "player" | "winner" | null;
 type HealthPulse = { kind: "damage" | "heal"; amount: number; sequence: number };
 type PlayMode = "solo" | "multiplayer";
 type SetupMode = "solo" | "multiplayer";
-type RoomSnapshot = {
+type RoomSession = {
   code: string;
-  status: "waiting" | "playing";
-  hostPlayerId: string;
-  players: { id: string; name: string }[];
-  revision: number;
-  game: GameState | null;
-  me: { id: string; name: string; isHost: boolean };
+  token: string;
+  intent: "create" | "join" | "reconnect";
+  name?: string;
 };
-type RoomEntry = RoomSnapshot & { token: string };
-type RoomAction =
-  | { type: "roll" | "resolve" | "activate-skill" | "skip-skill" | "skip-kit" | "settle" }
-  | { type: "hold"; index: number }
-  | { type: "target"; targetId: string }
-  | { type: "ability"; count: number };
 
-class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-async function roomRequest<T>(path: string, init: RequestInit = {}, token?: string) {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
-  const data = await response.json() as T & { error?: string };
-  if (!response.ok) throw new ApiError(response.status, data.error ?? "Không thể kết nối phòng.");
-  return data;
-}
+const REALTIME_HOST = "bang-dice-multiplayer.dowocuong-games.workers.dev";
+const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 function savedRoomSession() {
   if (typeof window === "undefined") return null;
   try {
     const session = JSON.parse(sessionStorage.getItem("bang-room") ?? "null") as { code?: string; token?: string } | null;
-    return session?.code && session.token ? { code: session.code, token: session.token } : null;
+    return session?.code && session.token ? { code: session.code, token: session.token, intent: "reconnect" as const } : null;
   } catch {
     sessionStorage.removeItem("bang-room");
     return null;
@@ -118,7 +91,7 @@ export default function Home() {
   const [setupMode, setSetupMode] = useState<SetupMode>("solo");
   const [localPlayerId, setLocalPlayerId] = useState("p0");
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
-  const [roomSession, setRoomSession] = useState<{ code: string; token: string } | null>(savedRoomSession);
+  const [roomSession, setRoomSession] = useState<RoomSession | null>(savedRoomSession);
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [roomLoading, setRoomLoading] = useState(false);
@@ -150,6 +123,7 @@ export default function Home() {
   const previousHp = useRef<Record<string, number>>({});
   const healthPulseSequence = useRef(0);
   const roomRevision = useRef(-1);
+  const socketRef = useRef<PartySocket | null>(null);
   const turnReady = readyTurn === game.turnNumber && transitionStage === null;
   const current = game.players[game.turn];
   const decisionOwner = game.decision
@@ -189,6 +163,8 @@ export default function Home() {
     setPlayerName(snapshot.me.name);
     setRoomCode(snapshot.code);
     setRoomError("");
+    setRoomLoading(false);
+    setActionPending(false);
     if (snapshot.game) {
       setGame(snapshot.game);
       setPlayMode("multiplayer");
@@ -197,6 +173,8 @@ export default function Home() {
   }, []);
 
   const clearRoom = useCallback(() => {
+    socketRef.current?.close();
+    socketRef.current = null;
     sessionStorage.removeItem("bang-room");
     roomRevision.current = -1;
     setRoomSession(null);
@@ -206,49 +184,82 @@ export default function Home() {
 
   useEffect(() => {
     if (!roomSession) return;
-    let cancelled = false;
-    let timer = 0;
-    const poll = async () => {
+    const socket = new PartySocket({
+      host: REALTIME_HOST,
+      room: roomSession.code.toLowerCase(),
+      query: {
+        intent: roomSession.intent,
+        token: roomSession.token,
+        name: roomSession.name,
+      },
+    });
+    socketRef.current = socket;
+
+    const onOpen = () => setRoomError("");
+    const onMessage = (event: MessageEvent<string>) => {
       try {
-        const snapshot = await roomRequest<RoomSnapshot>(`/api/rooms/${roomSession.code}`, {}, roomSession.token);
-        if (!cancelled) acceptRoom(snapshot);
+        const message = JSON.parse(event.data) as RoomServerMessage;
+        if (message.type === "snapshot") {
+          sessionStorage.setItem("bang-room", JSON.stringify({ code: roomSession.code, token: roomSession.token }));
+          acceptRoom(message.snapshot);
+        } else if (message.type === "left") {
+          clearRoom();
+          setRoomCode("");
+          setRoomLoading(false);
+        } else if (message.type === "error") {
+          setRoomError(message.message);
+          setRoomLoading(false);
+          setActionPending(false);
+          if (message.fatal) {
+            socket.close();
+            sessionStorage.removeItem("bang-room");
+            roomRevision.current = -1;
+            setRoomSession(null);
+            setRoom(null);
+          }
+        }
       } catch (error) {
-        if (cancelled) return;
-        if (error instanceof ApiError && (error.status === 401 || error.status === 404)) clearRoom();
-        else setRoomError(error instanceof Error ? error.message : "Mất kết nối phòng.");
-      } finally {
-        if (!cancelled) timer = window.setTimeout(poll, 1000);
+        console.error(error);
+        setRoomError("Dữ liệu phòng không hợp lệ.");
       }
     };
-    void poll();
+    const onClose = () => {
+      setActionPending(false);
+      if (socketRef.current === socket && roomRevision.current >= 0) setRoomError("Mất kết nối, đang kết nối lại…");
+    };
+    socket.addEventListener("open", onOpen);
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose);
     return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+      socket.removeEventListener("open", onOpen);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+      socket.close();
+      if (socketRef.current === socket) socketRef.current = null;
     };
   }, [roomSession, acceptRoom, clearRoom]);
+
+  const sendRoomMessage = useCallback((message: RoomClientMessage) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setRoomError("Chưa kết nối được với phòng.");
+      setRoomLoading(false);
+      setActionPending(false);
+      return false;
+    }
+    socket.send(JSON.stringify(message));
+    return true;
+  }, []);
 
   const performAction = useCallback(async (action: RoomAction, soloAction: (state: GameState) => GameState) => {
     if (playMode === "solo") {
       setGame(soloAction);
       return;
     }
-    if (!roomSession || !room) return;
+    if (!room) return;
     setActionPending(true);
-    try {
-      const snapshot = await roomRequest<RoomSnapshot>(
-        `/api/rooms/${roomSession.code}/action`,
-        { method: "POST", body: JSON.stringify({ ...action, revision: room.revision }) },
-        roomSession.token,
-      );
-      acceptRoom(snapshot);
-    } catch (error) {
-      if (!(error instanceof ApiError && error.status === 409)) {
-        setRoomError(error instanceof Error ? error.message : "Không gửi được hành động.");
-      }
-    } finally {
-      setActionPending(false);
-    }
-  }, [playMode, roomSession, room, acceptRoom]);
+    sendRoomMessage({ type: "action", action, revision: room.revision });
+  }, [playMode, room, sendRoomMessage]);
 
   useEffect(() => {
     const nextHp: Record<string, number> = {};
@@ -415,7 +426,7 @@ export default function Home() {
 
   const startGame = () => {
     if (roomSession && room?.status === "waiting") {
-      void roomRequest(`/api/rooms/${roomSession.code}/leave`, { method: "POST" }, roomSession.token).catch(() => undefined);
+      sendRoomMessage({ type: "leave" });
     }
     clearRoom();
     setPlayMode("solo");
@@ -446,59 +457,36 @@ export default function Home() {
     setLogOpen(false);
   };
 
-  const enterRoom = async (join: boolean) => {
+  const enterRoom = (join: boolean) => {
     setRoomLoading(true);
     setRoomError("");
-    try {
-      const code = roomCode.toUpperCase().replace(/\s/g, "");
-      const entry = await roomRequest<RoomEntry>(
-        join ? `/api/rooms/${code}/join` : "/api/rooms",
-        { method: "POST", body: JSON.stringify({ name: playerName }) },
-      );
-      const session = { code: entry.code, token: entry.token };
-      sessionStorage.setItem("bang-room", JSON.stringify(session));
-      roomRevision.current = -1;
-      setRoomSession(session);
-      setRoomCode(entry.code);
-      acceptRoom(entry);
-    } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Không thể vào phòng.");
-    } finally {
-      setRoomLoading(false);
-    }
+    const bytes = crypto.getRandomValues(new Uint8Array(6));
+    const generatedCode = [...bytes].map((byte) => ROOM_CODE_ALPHABET[byte % ROOM_CODE_ALPHABET.length]).join("");
+    const code = join ? roomCode.toUpperCase().replace(/\s/g, "") : generatedCode;
+    const session: RoomSession = {
+      code,
+      token: crypto.randomUUID(),
+      intent: join ? "join" : "create",
+      name: playerName,
+    };
+    roomRevision.current = -1;
+    setRoom(null);
+    setRoomSession(session);
+    setRoomCode(code);
   };
 
-  const startRoom = async () => {
-    if (!roomSession) return;
+  const startRoom = () => {
     setRoomLoading(true);
     setRoomError("");
-    try {
-      const snapshot = await roomRequest<RoomSnapshot>(
-        `/api/rooms/${roomSession.code}/start`,
-        { method: "POST" },
-        roomSession.token,
-      );
-      acceptRoom(snapshot);
+    if (sendRoomMessage({ type: "start" })) {
       setIntroSerial((serial) => serial + 1);
-    } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Không thể bắt đầu ván.");
-    } finally {
-      setRoomLoading(false);
     }
   };
 
-  const leaveWaitingRoom = async () => {
-    if (!roomSession) return;
+  const leaveWaitingRoom = () => {
     setRoomLoading(true);
-    try {
-      await roomRequest(`/api/rooms/${roomSession.code}/leave`, { method: "POST" }, roomSession.token);
-      clearRoom();
-      setRoomCode("");
-    } catch (error) {
-      setRoomError(error instanceof Error ? error.message : "Không thể rời phòng.");
-    } finally {
-      setRoomLoading(false);
-    }
+    setRoomError("");
+    sendRoomMessage({ type: "leave" });
   };
 
   const effectPosition = (playerId?: string): [number, number] => {

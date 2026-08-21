@@ -19,9 +19,14 @@ import {
   skipSkill,
   tableDistance,
 } from "../app/game.ts";
-import { publicGameFor, roomActorId } from "../worker/rooms.ts";
+import { applyRoomAction, publicGameFor, roomActorId } from "../app/room.ts";
 
 const middle = () => 0.5;
+
+test("rejects unknown multiplayer actions without corrupting room state", () => {
+  const game = newMultiplayerGame(["An", "Bình", "Chi"]);
+  assert.throws(() => applyRoomAction(game, { type: "unknown" }), /Hành động không hợp lệ/);
+});
 
 test("creates the official player and role counts", () => {
   for (let count = 3; count <= 8; count++) {

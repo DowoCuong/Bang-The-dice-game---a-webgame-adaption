@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bang-dice-multiplayer",
+  "main": "party/index.ts",
+  "compatibility_date": "2026-05-22",
+  "durable_objects": {
+    "bindings": [
+      { "name": "Main", "class_name": "GameRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] }
+  ]
+}
