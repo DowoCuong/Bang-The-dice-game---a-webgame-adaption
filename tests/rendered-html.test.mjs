@@ -31,6 +31,7 @@ test("renders the playable western table", async () => {
   assert.match(html, /class="panel-toggle bottom-panel-toggle"/);
   assert.doesNotMatch(html, /class="felt-lines"/);
   assert.match(html, /VÁN MỚI/);
+  assert.match(html, /MULTIPLAYER/);
   assert.match(html, /VAI CỦA BẠN/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

@@ -1,6 +1,6 @@
 # BANG! Dice — Web Game
 
-Bản web game fan-made chơi một người với bot, mô phỏng luật nền của **BANG! The Dice Game** cho bàn 3–8 người.
+Bản web game fan-made đấu bot hoặc chơi multiplayer phòng riêng, mô phỏng luật nền của **BANG! The Dice Game** cho bàn 3–8 người.
 
 ## Chơi trực tuyến
 
@@ -9,6 +9,8 @@ Bản web game fan-made chơi một người với bot, mô phỏng luật nền
 ## Tính năng
 
 - Bàn chơi tự điều chỉnh theo 3–8 người.
+- Multiplayer không cần tài khoản: nhập tên, tạo/vào phòng bằng mã ngẫu nhiên; chủ phòng bắt đầu ván.
+- Trạng thái ván và vai ẩn được xử lý phía máy chủ, đồng bộ cho mọi người trong phòng.
 - Phân phối vai trò, khoảng cách, xúc xắc và 16 kỹ năng nhân vật.
 - Hoạt ảnh tung xúc xắc, chọn mục tiêu và giải quyết hành động tuần tự.
 - Bot tự chơi; nhật ký và giao diện tiếng Việt.

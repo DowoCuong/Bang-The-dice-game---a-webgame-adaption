@@ -135,6 +135,7 @@ button:disabled { cursor: default; }
 }
 .icon-button { width: 40px; height: 40px; border-radius: 50%; }
 .text-button, .secondary { min-height: 38px; padding: 0 14px; border-radius: 7px; font-size: 10px; letter-spacing: 1px; }
+.room-chip { min-height: 38px; padding: 0 12px; color: #241007; border: 1px solid #ffe5a0; border-radius: 7px; background: #e8ad38; font-size: 10px; font-weight: 1000; letter-spacing: .08em; }
 
 .identity-strip {
   position: relative;
@@ -674,6 +675,29 @@ button:disabled { cursor: default; }
 .count-picker button.selected { color: white; border-color: #5a1d17; background: #a92c23; box-shadow: inset 0 0 0 3px #e7bc67; }
 .role-mix { margin: 14px 0 22px; padding: 10px; color: #69482e; border: 1px dashed #8b5d33; text-align: center; font-size: 12px; }
 .modal-primary { width: 100%; }
+.modal-primary:disabled, .room-secondary:disabled { cursor: not-allowed; filter: grayscale(.65); opacity: .58; }
+.mode-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 18px 0 22px; padding: 5px; border: 1px solid #8a5a32; border-radius: 9px; background: #79502b22; }
+.mode-picker button { min-height: 40px; color: #684424; border: 0; border-radius: 6px; background: transparent; font-size: 11px; font-weight: 1000; letter-spacing: .08em; }
+.mode-picker button.selected { color: #fff1bd; background: #712119; box-shadow: 0 3px 0 #35100c; }
+.room-entry, .room-lobby { display: grid; gap: 10px; }
+.room-entry > p, .room-lobby > p { margin: 0 0 5px; color: #65452f; font-size: 13px; line-height: 1.45; text-align: center; }
+.room-entry label, .room-label { margin: 5px 0 -3px; color: #684424; font-size: 10px; font-weight: 1000; letter-spacing: .12em; }
+.room-entry input { width: 100%; min-height: 48px; padding: 10px 13px; color: #2a160c; border: 2px solid #875327; border-radius: 7px; outline: none; background: #fff5da; font-size: 16px; font-weight: 800; }
+.room-entry input:focus { border-color: #a62c20; box-shadow: 0 0 0 3px #a62c2033; }
+.room-entry .code-input { text-align: center; font-size: 24px; letter-spacing: .28em; text-transform: uppercase; }
+.room-divider { height: 25px; display: flex; align-items: center; gap: 10px; color: #795332; font-size: 9px; font-weight: 1000; }
+.room-divider::before, .room-divider::after { height: 1px; flex: 1; background: #81583266; content: ""; }
+.room-secondary { width: 100%; min-height: 44px; color: #6b261d; border: 2px solid #7d4325; border-radius: 8px; background: #f0d8a8; font-size: 11px; font-weight: 1000; letter-spacing: .08em; }
+.room-label { text-align: center; }
+.room-code { padding: 3px 12px 7px; color: #8e241d; border: 0; background: none; font: 1000 44px/1 "Segoe UI", Arial, sans-serif; letter-spacing: .18em; text-indent: .18em; }
+.room-players { display: grid; gap: 6px; margin: 5px 0 10px; padding: 0; list-style: none; }
+.room-players li { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 11px; border: 1px solid #8c6038; border-radius: 6px; background: #fff4d477; }
+.room-players li.me { border-color: #a62c20; background: #a62c2014; }
+.room-players li.empty { border-style: dashed; opacity: .72; }
+.room-players span { overflow: hidden; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.room-players small { color: #7d4e2b; font-size: 8px; font-weight: 1000; letter-spacing: .1em; white-space: nowrap; }
+.room-error { margin: 14px 0 0 !important; padding: 9px 11px; color: #fff !important; border-radius: 6px; background: #9b281f; font-size: 12px; font-weight: 800; text-align: center; }
+.network-error { position: fixed; z-index: 95; right: 18px; top: calc(var(--topbar-size) + 16px); max-width: min(360px, calc(100vw - 36px)); padding: 10px 13px; color: white; border: 1px solid #ffb099; border-radius: 7px; background: #8c211bcc; box-shadow: 0 8px 28px #0009; font-size: 11px; font-weight: 800; }
 .rules-modal { width: min(850px, 100%); }
 .rule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .rule-grid article { padding: 13px; border: 1px solid #9a6b3e; background: #fff5db70; }

@@ -28,6 +28,57 @@ import {
 type ActiveEffect = GameEffect & { uiDelay: number };
 type TransitionStage = "waiting" | "round" | "player" | "winner" | null;
 type HealthPulse = { kind: "damage" | "heal"; amount: number; sequence: number };
+type PlayMode = "solo" | "multiplayer";
+type SetupMode = "solo" | "multiplayer";
+type RoomSnapshot = {
+  code: string;
+  status: "waiting" | "playing";
+  hostPlayerId: string;
+  players: { id: string; name: string }[];
+  revision: number;
+  game: GameState | null;
+  me: { id: string; name: string; isHost: boolean };
+};
+type RoomEntry = RoomSnapshot & { token: string };
+type RoomAction =
+  | { type: "roll" | "resolve" | "activate-skill" | "skip-skill" | "skip-kit" | "settle" }
+  | { type: "hold"; index: number }
+  | { type: "target"; targetId: string }
+  | { type: "ability"; count: number };
+
+class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function roomRequest<T>(path: string, init: RequestInit = {}, token?: string) {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init.headers,
+    },
+  });
+  const data = await response.json() as T & { error?: string };
+  if (!response.ok) throw new ApiError(response.status, data.error ?? "Không thể kết nối phòng.");
+  return data;
+}
+
+function savedRoomSession() {
+  if (typeof window === "undefined") return null;
+  try {
+    const session = JSON.parse(sessionStorage.getItem("bang-room") ?? "null") as { code?: string; token?: string } | null;
+    return session?.code && session.token ? { code: session.code, token: session.token } : null;
+  } catch {
+    sessionStorage.removeItem("bang-room");
+    return null;
+  }
+}
 
 const roleLabel: Record<Role, string> = {
   Sheriff: "CẢNH SÁT TRƯỞNG",
@@ -63,6 +114,16 @@ function initialGame() {
 
 export default function Home() {
   const [game, setGame] = useState<GameState>(initialGame);
+  const [playMode, setPlayMode] = useState<PlayMode>("solo");
+  const [setupMode, setSetupMode] = useState<SetupMode>("solo");
+  const [localPlayerId, setLocalPlayerId] = useState("p0");
+  const [room, setRoom] = useState<RoomSnapshot | null>(null);
+  const [roomSession, setRoomSession] = useState<{ code: string; token: string } | null>(savedRoomSession);
+  const [playerName, setPlayerName] = useState("");
+  const [roomCode, setRoomCode] = useState("");
+  const [roomLoading, setRoomLoading] = useState(false);
+  const [roomError, setRoomError] = useState("");
+  const [actionPending, setActionPending] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -88,16 +149,18 @@ export default function Home() {
   const skillQueueEnd = useRef(0);
   const previousHp = useRef<Record<string, number>>({});
   const healthPulseSequence = useRef(0);
+  const roomRevision = useRef(-1);
   const turnReady = readyTurn === game.turnNumber && transitionStage === null;
   const current = game.players[game.turn];
   const decisionOwner = game.decision
     ? game.players.find((player) => player.id === game.decision!.playerId)
     : current;
-  const humanDecision = !!decisionOwner?.human;
-  const botDecision = !current.human && ["bot", "shot", "beer", "kit"].includes(game.phase);
+  const localDecision = playMode === "solo" ? !!decisionOwner?.human : decisionOwner?.id === localPlayerId;
+  const botDecision = playMode === "solo" && !current.human && ["bot", "shot", "beer", "kit"].includes(game.phase);
+  const canControl = turnReady && localDecision && !actionPending;
   const selectable = useMemo(
-    () => new Set(turnReady && humanDecision ? selectableTargetIds(game) : []),
-    [game, turnReady, humanDecision],
+    () => new Set(canControl ? selectableTargetIds(game) : []),
+    [game, canControl],
   );
   const skillEffects = useMemo(() => activeEffects.filter((effect) => effect.kind === "skill"), [activeEffects]);
   const impactGroups = useMemo(() => {
@@ -108,7 +171,7 @@ export default function Home() {
     }
     return [...groups.values()];
   }, [activeEffects]);
-  const human = game.players.find((player) => player.human)!;
+  const human = game.players.find((player) => player.id === localPlayerId) ?? game.players.find((player) => player.human) ?? game.players[0];
   const shownResult = !turnReady && game.lastTurnResult && (
     game.lastTurnResult.turnNumber === game.turnNumber - 1
     || (game.phase === "over" && game.lastTurnResult.turnNumber === game.turnNumber)
@@ -116,6 +179,76 @@ export default function Home() {
   const displayedDice = shownResult?.dice ?? game.dice;
   const resultPlayer = shownResult ? game.players.find((player) => player.id === shownResult.playerId) : null;
   const diceMoving = rolling || botRolling;
+
+  const acceptRoom = useCallback((snapshot: RoomSnapshot) => {
+    if (snapshot.revision < roomRevision.current) return;
+    roomRevision.current = snapshot.revision;
+    setRoom(snapshot);
+    setSetupMode("multiplayer");
+    setLocalPlayerId(snapshot.me.id);
+    setPlayerName(snapshot.me.name);
+    setRoomCode(snapshot.code);
+    setRoomError("");
+    if (snapshot.game) {
+      setGame(snapshot.game);
+      setPlayMode("multiplayer");
+      setSetupOpen(false);
+    }
+  }, []);
+
+  const clearRoom = useCallback(() => {
+    sessionStorage.removeItem("bang-room");
+    roomRevision.current = -1;
+    setRoomSession(null);
+    setRoom(null);
+    setRoomError("");
+  }, []);
+
+  useEffect(() => {
+    if (!roomSession) return;
+    let cancelled = false;
+    let timer = 0;
+    const poll = async () => {
+      try {
+        const snapshot = await roomRequest<RoomSnapshot>(`/api/rooms/${roomSession.code}`, {}, roomSession.token);
+        if (!cancelled) acceptRoom(snapshot);
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 404)) clearRoom();
+        else setRoomError(error instanceof Error ? error.message : "Mất kết nối phòng.");
+      } finally {
+        if (!cancelled) timer = window.setTimeout(poll, 1000);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [roomSession, acceptRoom, clearRoom]);
+
+  const performAction = useCallback(async (action: RoomAction, soloAction: (state: GameState) => GameState) => {
+    if (playMode === "solo") {
+      setGame(soloAction);
+      return;
+    }
+    if (!roomSession || !room) return;
+    setActionPending(true);
+    try {
+      const snapshot = await roomRequest<RoomSnapshot>(
+        `/api/rooms/${roomSession.code}/action`,
+        { method: "POST", body: JSON.stringify({ ...action, revision: room.revision }) },
+        roomSession.token,
+      );
+      acceptRoom(snapshot);
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 409)) {
+        setRoomError(error instanceof Error ? error.message : "Không gửi được hành động.");
+      }
+    } finally {
+      setActionPending(false);
+    }
+  }, [playMode, roomSession, room, acceptRoom]);
 
   useEffect(() => {
     const nextHp: Record<string, number> = {};
@@ -139,15 +272,16 @@ export default function Home() {
   }, [game.players]);
 
   const rollWithAnimation = useCallback(() => {
-    if (rolling || !turnReady || !canRoll(game)) return;
+    if (rolling || !canControl || !canRoll(game)) return;
     setRolling(true);
     const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 80 : 820;
     rollTimer.current = window.setTimeout(() => {
-      setGame((state) => rollDice(state));
-      setRolling(false);
-      rollTimer.current = null;
+      void performAction({ type: "roll" }, (state) => rollDice(state)).finally(() => {
+        setRolling(false);
+        rollTimer.current = null;
+      });
     }, duration);
-  }, [game, rolling, turnReady]);
+  }, [game, rolling, canControl, performAction]);
 
   useEffect(() => () => {
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
@@ -247,11 +381,12 @@ export default function Home() {
     } else {
       showNextNotice();
     }
-  }, [game.effects, game.effectSeq, game.turnNumber, game.winner, introSerial]);
+  }, [game.effects, game.effectSeq, game.turnNumber, game.round, game.lastTurnResult, game.winner, introSerial]);
 
   useEffect(() => {
     if (!botDecision || !turnReady) return;
     const rollingDice = game.phase === "bot";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- phase change starts the bot roll animation.
     setBotRolling(rollingDice);
     const timer = window.setTimeout(() => {
       setGame((state) => playBotTurn(state));
@@ -261,22 +396,30 @@ export default function Home() {
   }, [botDecision, game.phase, game.turn, turnReady]);
 
   useEffect(() => {
-    if (game.phase !== "resolving" || !turnReady) return;
-    const timer = window.setTimeout(() => setGame((state) => resolveChoices(state)), 1000);
+    if (game.phase !== "resolving" || !canControl) return;
+    const timer = window.setTimeout(() => {
+      void performAction({ type: "settle" }, (state) => resolveChoices(state));
+    }, 1000);
     return () => window.clearTimeout(timer);
-  }, [game.phase, game.turnNumber, turnReady]);
+  }, [game.phase, game.turnNumber, canControl, performAction]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || rolling || !turnReady || !canRoll(game)) return;
+      if (event.code !== "Space" || setupOpen || rulesOpen || logOpen || rolling || !canControl || !canRoll(game)) return;
       event.preventDefault();
       rollWithAnimation();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [game, setupOpen, rulesOpen, logOpen, rolling, turnReady, rollWithAnimation]);
+  }, [game, setupOpen, rulesOpen, logOpen, rolling, canControl, rollWithAnimation]);
 
   const startGame = () => {
+    if (roomSession && room?.status === "waiting") {
+      void roomRequest(`/api/rooms/${roomSession.code}/leave`, { method: "POST" }, roomSession.token).catch(() => undefined);
+    }
+    clearRoom();
+    setPlayMode("solo");
+    setLocalPlayerId("p0");
     if (rollTimer.current !== null) window.clearTimeout(rollTimer.current);
     if (turnTimer.current !== null) window.clearTimeout(turnTimer.current);
     rollTimer.current = null;
@@ -301,6 +444,61 @@ export default function Home() {
     setIntroSerial((serial) => serial + 1);
     setSetupOpen(false);
     setLogOpen(false);
+  };
+
+  const enterRoom = async (join: boolean) => {
+    setRoomLoading(true);
+    setRoomError("");
+    try {
+      const code = roomCode.toUpperCase().replace(/\s/g, "");
+      const entry = await roomRequest<RoomEntry>(
+        join ? `/api/rooms/${code}/join` : "/api/rooms",
+        { method: "POST", body: JSON.stringify({ name: playerName }) },
+      );
+      const session = { code: entry.code, token: entry.token };
+      sessionStorage.setItem("bang-room", JSON.stringify(session));
+      roomRevision.current = -1;
+      setRoomSession(session);
+      setRoomCode(entry.code);
+      acceptRoom(entry);
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : "Không thể vào phòng.");
+    } finally {
+      setRoomLoading(false);
+    }
+  };
+
+  const startRoom = async () => {
+    if (!roomSession) return;
+    setRoomLoading(true);
+    setRoomError("");
+    try {
+      const snapshot = await roomRequest<RoomSnapshot>(
+        `/api/rooms/${roomSession.code}/start`,
+        { method: "POST" },
+        roomSession.token,
+      );
+      acceptRoom(snapshot);
+      setIntroSerial((serial) => serial + 1);
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : "Không thể bắt đầu ván.");
+    } finally {
+      setRoomLoading(false);
+    }
+  };
+
+  const leaveWaitingRoom = async () => {
+    if (!roomSession) return;
+    setRoomLoading(true);
+    try {
+      await roomRequest(`/api/rooms/${roomSession.code}/leave`, { method: "POST" }, roomSession.token);
+      clearRoom();
+      setRoomCode("");
+    } catch (error) {
+      setRoomError(error instanceof Error ? error.message : "Không thể rời phòng.");
+    } finally {
+      setRoomLoading(false);
+    }
   };
 
   const effectPosition = (playerId?: string): [number, number] => {
@@ -329,6 +527,8 @@ export default function Home() {
           <span>{currentPrompt(game)}</span>
         </div>
         <div className="top-actions">
+          {room && <button className="room-chip" onClick={() => { setSetupMode("multiplayer"); setSetupOpen(true); }}>PHÒNG {room.code}</button>}
+          {!room && <button className="text-button" onClick={() => { setSetupMode("multiplayer"); setSetupOpen(true); }}>MULTIPLAYER</button>}
           <button className="text-button" onClick={() => setSetupOpen(true)}>VÁN MỚI</button>
           <button className="icon-button" onClick={() => setRulesOpen(true)} aria-label="Mở luật chơi">?</button>
         </div>
@@ -358,19 +558,20 @@ export default function Home() {
         >
           {game.players.map((player, index) => {
             const [x, y] = seatLayout[game.playerCount][index];
-            const showRole = player.human || player.revealed || game.phase === "over";
+            const isLocalPlayer = player.id === localPlayerId;
+            const showRole = isLocalPlayer || player.revealed || game.phase === "over";
             const targetable = selectable.has(player.id);
             const healthPulse = healthPulses[player.id];
             return (
               <button
                 type="button"
-                className={`seat ${player.human ? "human-player" : ""} ${player.role === "Sheriff" ? "sheriff-player" : ""} ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
+                className={`seat ${isLocalPlayer ? "human-player" : ""} ${player.role === "Sheriff" ? "sheriff-player" : ""} ${index === game.turn ? "active" : ""} ${targetable ? "targetable" : ""} ${!player.alive ? "dead" : ""}`}
                 style={{
                   "--x": `${x}%`,
                   "--y": `${y}%`,
                 } as CSSProperties}
                 key={player.id}
-                onClick={() => targetable && setGame((state) => chooseTarget(state, player.id, true))}
+                onClick={() => targetable && void performAction({ type: "target", targetId: player.id }, (state) => chooseTarget(state, player.id, true))}
                 disabled={!targetable}
                 aria-label={`${player.name}, ${player.character.name}, ${player.hp} máu, ${player.arrows} mũi tên${targetable ? ", chọn làm mục tiêu" : ""}`}
               >
@@ -400,7 +601,7 @@ export default function Home() {
                   </span>
                 </span>
                 <span className="tokens">
-                  <span className="seat-owner">{player.human ? "BẠN" : player.name.toUpperCase()}</span>
+                  <span className="seat-owner">{isLocalPlayer ? "BẠN" : player.name.toUpperCase()}</span>
                   <span
                     className={healthPulse ? `bullet-stack hp-${healthPulse.kind}` : "bullet-stack"}
                     aria-label={`${player.hp} trên ${player.maxHp} máu`}
@@ -528,8 +729,8 @@ export default function Home() {
                     className={`die ${face ?? "blank"} ${held ? "held" : ""} ${dieRolling ? "rolling" : face ? "revealed" : ""}`}
                     style={{ "--die-index": index } as CSSProperties}
                     key={index}
-                    onClick={() => setGame((state) => toggleHeld(state, index))}
-                    disabled={rolling || !turnReady || game.phase !== "roll" || game.rolls === 0}
+                    onClick={() => void performAction({ type: "hold", index }, (state) => toggleHeld(state, index))}
+                    disabled={rolling || !canControl || game.phase !== "roll" || game.rolls === 0}
                     aria-label={`Xúc xắc ${index + 1}: ${face ? faceInfo[face].label : "chưa tung"}${held ? ", đang giữ" : ""}`}
                   >
                     {face === "dynamite"
@@ -542,32 +743,32 @@ export default function Home() {
             </div>
 
             <div className="turn-actions">
-              {game.phase === "roll" && (
+              {game.phase === "roll" && localDecision && (
                 <>
-                  <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !turnReady || !canRoll(game)}>
+                  <button className="roll-button" onClick={rollWithAnimation} disabled={rolling || !canControl || !canRoll(game)}>
                     {rolling ? "ĐANG TUNG…" : game.rolls ? "TUNG LẠI" : "TUNG XÚC XẮC"} <kbd>SPACE</kbd>
                   </button>
-                  {game.rolls > 0 && <button className="resolve-button" onClick={() => setGame((state) => beginResolution(state))} disabled={rolling}>CHỐT KẾT QUẢ</button>}
+                  {game.rolls > 0 && <button className="resolve-button" onClick={() => void performAction({ type: "resolve" }, (state) => beginResolution(state))} disabled={rolling || !canControl}>CHỐT KẾT QUẢ</button>}
                 </>
               )}
-              {humanDecision && game.phase === "shot" && canActivateSkill(game) && (
+              {localDecision && game.phase === "shot" && canActivateSkill(game) && (
                 <>
-                  <button className="skill-button" onClick={() => setGame((state) => activateSkill(state))}>
+                  <button className="skill-button" onClick={() => void performAction({ type: "activate-skill" }, (state) => activateSkill(state))}>
                     NHÂN ĐÔI PHÁT BẮN NÀY
                   </button>
-                  <button className="resolve-button" onClick={() => setGame((state) => skipSkill(state))}>
+                  <button className="resolve-button" onClick={() => void performAction({ type: "skip-skill" }, (state) => skipSkill(state))}>
                     KHÔNG KÍCH HOẠT
                   </button>
                 </>
               )}
-              {humanDecision && (game.phase === "shot" || game.phase === "beer" || game.phase === "resolving" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
-              {humanDecision && game.phase === "kit" && <button className="resolve-button" onClick={() => setGame((state) => skipKitArrow(state))}>KHÔNG KÍCH HOẠT</button>}
-              {humanDecision && game.phase === "ability" && game.decision && (
+              {localDecision && (game.phase === "shot" || game.phase === "beer" || game.phase === "resolving" || game.phase === "kit" || game.phase === "sid") && <div className="target-callout">⌖ {currentPrompt(game)}</div>}
+              {localDecision && game.phase === "kit" && <button className="resolve-button" onClick={() => void performAction({ type: "skip-kit" }, (state) => skipKitArrow(state))}>KHÔNG KÍCH HOẠT</button>}
+              {localDecision && game.phase === "ability" && game.decision && (
                 <div className="ability-choice">
                   <strong>{currentPrompt(game)}</strong>
                   <div>
                     {Array.from({ length: game.decision.max + 1 }, (_, count) => (
-                      <button key={count} onClick={() => setGame((state) => chooseAbility(state, count))}>
+                      <button key={count} onClick={() => void performAction({ type: "ability", count }, (state) => chooseAbility(state, count))}>
                         {count === 0 ? "KHÔNG DÙNG" : game.decision!.kind === "bart" ? `ĐỔI ${count} HP → ${count} MŨI TÊN` : `BỎ ${count} MŨI TÊN`}
                       </button>
                     ))}
@@ -575,9 +776,10 @@ export default function Home() {
                 </div>
               )}
               {botDecision && turnReady && <div className="bot-thinking"><i /><i /><i /> {current.name} {game.phase === "bot" ? "đang tung…" : "đang quyết định kỹ năng…"}</div>}
-              {game.phase === "over" && <button className="roll-button" onClick={() => setSetupOpen(true)}>CHƠI VÁN MỚI</button>}
+              {playMode === "multiplayer" && !localDecision && game.phase !== "over" && <div className="bot-thinking"><i /><i /><i /> {decisionOwner?.name ?? current.name} đang quyết định…</div>}
+              {game.phase === "over" && <button className="roll-button" onClick={() => { setSetupMode(playMode === "multiplayer" ? "multiplayer" : "solo"); setSetupOpen(true); }}>CHƠI VÁN MỚI</button>}
             </div>
-            {game.phase === "roll" && <p aria-live="polite">{rolling ? "Xúc xắc đang lăn…" : `Lần tung ${game.rolls}/${maxRolls(game)} · Bấm xúc xắc để giữ`}</p>}
+            {game.phase === "roll" && localDecision && <p aria-live="polite">{rolling ? "Xúc xắc đang lăn…" : `Lần tung ${game.rolls}/${maxRolls(game)} · Bấm xúc xắc để giữ`}</p>}
           </div>
 
           {transitionStage === "player" && (
@@ -652,19 +854,64 @@ export default function Home() {
             <button className="close" onClick={() => setSetupOpen(false)} aria-label="Đóng">×</button>
             <p className="eyebrow">CHUẨN BỊ BÀN</p>
             <h1 id="setup-title">VÁN MỚI</h1>
-            <p>Bạn đấu với bot. Vai trò và nhân vật được xáo ngẫu nhiên; Sheriff hoặc Deputy (ván 3 người) đi trước.</p>
-            <fieldset>
-              <legend>SỐ NGƯỜI CHƠI</legend>
-              <div className="count-picker">
-                {[3, 4, 5, 6, 7, 8].map((count) => (
-                  <button className={nextCount === count ? "selected" : ""} key={count} onClick={() => setNextCount(count)}>{count}</button>
-                ))}
-              </div>
-            </fieldset>
-            <div className="role-mix">
-              {nextCount === 3 ? "1 Deputy · 1 Outlaw · 1 Renegade" : nextCount === 4 ? "1 Sheriff · 2 Outlaw · 1 Renegade" : `${nextCount} vai trò đúng theo luật gốc`}
+            <div className="mode-picker" role="tablist" aria-label="Chế độ chơi">
+              <button className={setupMode === "solo" ? "selected" : ""} onClick={() => setSetupMode("solo")}>ĐẤU BOT</button>
+              <button className={setupMode === "multiplayer" ? "selected" : ""} onClick={() => setSetupMode("multiplayer")}>MULTIPLAYER</button>
             </div>
-            <button className="modal-primary" onClick={startGame}>CHIA BÀI & BẮT ĐẦU</button>
+
+            {setupMode === "solo" ? (
+              <>
+                <p>Bạn đấu với bot. Vai trò và nhân vật được xáo ngẫu nhiên; Sheriff hoặc Deputy (ván 3 người) đi trước.</p>
+                <fieldset>
+                  <legend>SỐ NGƯỜI CHƠI</legend>
+                  <div className="count-picker">
+                    {[3, 4, 5, 6, 7, 8].map((count) => (
+                      <button className={nextCount === count ? "selected" : ""} key={count} onClick={() => setNextCount(count)}>{count}</button>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="role-mix">
+                  {nextCount === 3 ? "1 Deputy · 1 Outlaw · 1 Renegade" : nextCount === 4 ? "1 Sheriff · 2 Outlaw · 1 Renegade" : `${nextCount} vai trò đúng theo luật gốc`}
+                </div>
+                <button className="modal-primary" onClick={startGame}>CHIA BÀI & BẮT ĐẦU</button>
+              </>
+            ) : room ? (
+              <div className="room-lobby">
+                <p className="room-label">MÃ PHÒNG</p>
+                <button className="room-code" onClick={() => void navigator.clipboard?.writeText(room.code)} title="Sao chép mã phòng">{room.code}</button>
+                <p>{room.status === "waiting" ? "Gửi mã này cho bạn bè. Phòng tự áp dụng luật theo số người khi bắt đầu." : room.game?.phase === "over" ? "Ván đã kết thúc." : "Ván đang diễn ra."}</p>
+                <ol className="room-players">
+                  {room.players.map((player) => (
+                    <li key={player.id} className={player.id === room.me.id ? "me" : ""}>
+                      <span>{player.name}</span>
+                      <small>{player.id === room.hostPlayerId ? "CHỦ PHÒNG" : player.id === room.me.id ? "BẠN" : "ĐÃ VÀO"}</small>
+                    </li>
+                  ))}
+                  {room.status === "waiting" && room.players.length < 8 && <li className="empty"><span>Đang chờ người chơi…</span><small>{room.players.length}/8</small></li>}
+                </ol>
+                {room.status === "waiting" && room.me.isHost && (
+                  <button className="modal-primary" onClick={() => void startRoom()} disabled={roomLoading || room.players.length < 3}>
+                    {room.players.length < 3 ? `CẦN THÊM ${3 - room.players.length} NGƯỜI` : roomLoading ? "ĐANG BẮT ĐẦU…" : `BẮT ĐẦU VỚI ${room.players.length} NGƯỜI`}
+                  </button>
+                )}
+                {room.status === "waiting" && !room.me.isHost && <div className="role-mix">Đang chờ chủ phòng bắt đầu…</div>}
+                {room.status === "playing" && room.game?.phase === "over" && room.me.isHost && <button className="modal-primary" onClick={() => void startRoom()} disabled={roomLoading}>CHƠI LẠI</button>}
+                {room.status === "playing" && room.game?.phase !== "over" && <button className="modal-primary" onClick={() => setSetupOpen(false)}>TRỞ LẠI BÀN</button>}
+                {room.status === "waiting" && <button className="room-secondary" onClick={() => void leaveWaitingRoom()} disabled={roomLoading}>RỜI PHÒNG</button>}
+              </div>
+            ) : (
+              <div className="room-entry">
+                <p>Không cần tài khoản. Nhập tên, tạo phòng hoặc vào bằng mã 6 ký tự.</p>
+                <label htmlFor="player-name">TÊN CỦA BẠN</label>
+                <input id="player-name" value={playerName} onChange={(event) => setPlayerName(event.target.value)} maxLength={20} autoComplete="nickname" placeholder="Ví dụ: Minh" />
+                <button className="modal-primary" onClick={() => void enterRoom(false)} disabled={roomLoading || !playerName.trim()}>{roomLoading ? "ĐANG KẾT NỐI…" : "TẠO PHÒNG MỚI"}</button>
+                <div className="room-divider"><span>HOẶC</span></div>
+                <label htmlFor="room-code">MÃ PHÒNG</label>
+                <input id="room-code" className="code-input" value={roomCode} onChange={(event) => setRoomCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6))} maxLength={6} autoComplete="off" placeholder="ABC234" />
+                <button className="room-secondary" onClick={() => void enterRoom(true)} disabled={roomLoading || !playerName.trim() || roomCode.length !== 6}>VÀO PHÒNG</button>
+              </div>
+            )}
+            {setupMode === "multiplayer" && roomError && <p className="room-error" role="alert">{roomError}</p>}
           </section>
         </div>
       )}
@@ -695,6 +942,7 @@ export default function Home() {
           <ol>{game.log.map((entry, index) => <li key={`${entry}-${index}`}>{entry}</li>)}</ol>
         </aside>
       )}
+      {roomError && !setupOpen && <button className="network-error" onClick={() => { setSetupMode("multiplayer"); setSetupOpen(true); }}>{roomError}</button>}
     </main>
   );
 }

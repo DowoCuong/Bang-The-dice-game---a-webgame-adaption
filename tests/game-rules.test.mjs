@@ -10,6 +10,7 @@ import {
   chooseTarget,
   eligibleTargetIds,
   newGame,
+  newMultiplayerGame,
   playBotTurn,
   resolveChoices,
   rollDice,
@@ -18,6 +19,7 @@ import {
   skipSkill,
   tableDistance,
 } from "../app/game.ts";
+import { publicGameFor, roomActorId } from "../worker/rooms.ts";
 
 const middle = () => 0.5;
 
@@ -28,6 +30,55 @@ test("creates the official player and role counts", () => {
     assert.equal(game.players.filter((player) => player.role === "Sheriff").length, count === 3 ? 0 : 1);
     assert.equal(game.players.filter((player) => player.human).length, 1);
   }
+});
+
+test("creates a human-only multiplayer game with player names", () => {
+  const names = ["An", "Bình", "Chi", "Dũng"];
+  const game = newMultiplayerGame(names, middle);
+  assert.deepEqual(game.players.map((player) => player.name), names);
+  assert.equal(game.players.every((player) => player.human), true);
+  assert.notEqual(game.phase, "bot");
+});
+
+test("keeps hidden roles private and assigns decisions to their owner", () => {
+  const game = newMultiplayerGame(["An", "Bình", "Chi", "Dũng"], middle);
+  game.players[1].role = "Outlaw";
+  game.players[1].revealed = false;
+  const publicGame = publicGameFor(game, "p0");
+  assert.equal(publicGame.players[1].role, "Renegade");
+  assert.equal(game.players[1].role, "Outlaw");
+
+  game.decision = {
+    kind: "pedro",
+    playerId: "p2",
+    max: 1,
+    damages: [["p2", 1]],
+    cause: "gatling",
+    resume: "gatling",
+    choices: [],
+  };
+  assert.equal(roomActorId(game), "p2");
+});
+
+test("asks each multiplayer defender before resolving a shared hit", () => {
+  const game = newMultiplayerGame(["An", "Bình", "Chi", "Dũng"], middle);
+  game.turn = 0;
+  game.phase = "roll";
+  game.players[0].character = characters.find((character) => character.id === "lucky");
+  game.players[1].character = characters.find((character) => character.id === "bart");
+  game.players[2].character = characters.find((character) => character.id === "pedro");
+  game.players[2].arrows = 2;
+  game.arrowSupply = 7;
+  game.rolls = 1;
+  game.dice = ["gatling", "gatling", "gatling", "dynamite", "dynamite"];
+
+  const bartChoice = beginResolution(game);
+  assert.equal(bartChoice.decision.playerId, "p1");
+  const pedroChoice = chooseAbility(bartChoice, 0);
+  assert.equal(pedroChoice.decision.playerId, "p2");
+  const resolved = chooseAbility(pedroChoice, 1);
+  assert.equal(resolved.players[1].hp, game.players[1].hp - 1);
+  assert.equal(resolved.players[2].arrows, 1);
 });
 
 test("resolves arrows immediately after a roll", () => {
@@ -324,7 +375,7 @@ test("table notifications remain visible for about three seconds", () => {
   assert.match(page, /if \(effect\.kind === "target"\) return/);
   assert.match(page, /actionQueueEnd\.current = actionStartsAt \+ 900/);
   assert.match(page, /item\.id !== effect\.targetEffectId/);
-  assert.match(page, /resolveChoices\(state\)\)\, 1000/);
+  assert.match(page, /performAction\(\{ type: "settle" \}, \(state\) => resolveChoices\(state\)\)/);
   assert.match(styles, /\.target-cue\.target-beer \{ color: #43e879; \}/);
   assert.match(styles, /\.target-cue\.target-gatling \{ color: #42bfff; \}/);
   assert.match(styles, /\.target-cue-beam \{ opacity: \.34; \}/);
@@ -357,7 +408,7 @@ test("round and player-turn announcements are separated and last two seconds", (
   assert.match(styles, /animation: winner-announcement 3s/);
   assert.match(page, /effectQueueEnd\.current - now \+ 100/);
   assert.match(page, /KẾT QUẢ • \{resultPlayer\.name\.toUpperCase\(\)\}/);
-  assert.match(page, /player\.human \? "human-player"/);
+  assert.match(page, /isLocalPlayer \? "human-player"/);
   assert.match(styles, /\.seat\.human-player::after/);
   assert.match(styles, /\.effect-impact-row[\s\S]*display: flex/);
   assert.match(styles, /\.role-photo\.outlaw \{ background-position: 100% 0; \}/);

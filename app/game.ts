@@ -47,7 +47,10 @@ export type AbilityDecision = {
   cause: DamageCause;
   sourceId?: string;
   resume: DamageResume;
+  choices: AbilityChoice[];
 };
+
+type AbilityChoice = { kind: "bart" | "pedro"; playerId: string; count: number };
 
 export type GameEffectKind = "target" | "shot" | "beer" | "arrow" | "gatling" | "damage" | "skill";
 
@@ -154,7 +157,7 @@ function emitSkill(game: GameState, sourceId: string, label: string, targetId?: 
   emitEffect(game, { kind: "skill", sourceId, targetId, amount, label });
 }
 
-export function newGame(playerCount = 5, rng = Math.random): GameState {
+function createGame(playerCount: number, rng: () => number, playerNames?: string[]): GameState {
   const count = Math.max(3, Math.min(8, playerCount));
   const roles = shuffle(roleSets[count], rng);
   const cast = shuffle(characters, rng).slice(0, count);
@@ -162,14 +165,14 @@ export function newGame(playerCount = 5, rng = Math.random): GameState {
     const maxHp = cast[index].life + (role === "Sheriff" ? 2 : 0);
     return {
       id: `p${index}`,
-      name: index === 0 ? "Bạn" : `Bot ${index}`,
+      name: playerNames?.[index] ?? (index === 0 ? "Bạn" : `Bot ${index}`),
       role,
       character: cast[index],
       hp: maxHp,
       maxHp,
       arrows: 0,
       alive: true,
-      human: index === 0,
+      human: playerNames ? true : index === 0,
       revealed: count === 3 || role === "Sheriff",
     };
   });
@@ -197,6 +200,14 @@ export function newGame(playerCount = 5, rng = Math.random): GameState {
   };
   applyStartAbility(game);
   return game;
+}
+
+export function newGame(playerCount = 5, rng = Math.random): GameState {
+  return createGame(playerCount, rng);
+}
+
+export function newMultiplayerGame(playerNames: string[], rng = Math.random): GameState {
+  return createGame(playerNames.length, rng, playerNames);
 }
 
 export function maxRolls(game: GameState) {
@@ -313,10 +324,15 @@ function damageGroup(
   cause: DamageCause,
   sourceId?: string,
   resume?: DamageResume,
-  choice?: { kind: "bart" | "pedro"; count: number },
+  choices: AbilityChoice[] = [],
 ) {
-  const humanDamage = [...damages].find(([id, requested]) => requested > 0 && game.players.find((player) => player.id === id)?.human);
-  if (resume && humanDamage && !choice) {
+  const humanDamage = [...damages].find(([id, requested]) => {
+    const player = game.players.find((candidate) => candidate.id === id);
+    if (!player?.human || requested <= 0 || choices.some((choice) => choice.playerId === id)) return false;
+    return ((cause === "shoot" || cause === "gatling") && player.character.id === "bart" && game.arrowSupply > 1)
+      || (player.character.id === "pedro" && player.arrows > 0);
+  });
+  if (resume && humanDamage) {
     const [playerId, requested] = humanDamage;
     const player = game.players.find((candidate) => candidate.id === playerId)!;
     const bartMax = (cause === "shoot" || cause === "gatling") && player.character.id === "bart"
@@ -333,6 +349,7 @@ function damageGroup(
         cause,
         sourceId,
         resume,
+        choices,
       };
       game.phase = "ability";
       return null;
@@ -354,6 +371,7 @@ function damageGroup(
       emitSkill(game, player.id, "JOURDONNAIS • CHỈ MẤT TỐI ĐA 1 MÁU", player.id);
     }
     let replaced = 0;
+    const choice = choices.find((candidate) => candidate.playerId === player.id);
     if ((cause === "shoot" || cause === "gatling") && player.character.id === "bart") {
       const replaceLimit = player.human
         ? (choice?.kind === "bart" ? choice.count : 0)
@@ -662,21 +680,22 @@ export function skipKitArrow(game: GameState) {
   return resolveGatling(next);
 }
 
-function resolvePending(game: GameState, choice?: { kind: "bart" | "pedro"; count: number }) {
+function resolvePending(game: GameState, choices: AbilityChoice[] = []) {
   if (!game.pending) return game;
   const next = clone(game);
   const shooter = next.players[next.turn];
-  if (!next.pending.shotsResolved) {
+  const pending = next.pending!;
+  if (!pending.shotsResolved) {
     const shots = new Map<string, number>();
-    next.pending.shotTargets.forEach((target, index) => {
-      const damage = next.pending!.slabDoubleIndex === index ? 2 : 1;
+    pending.shotTargets.forEach((target, index) => {
+      const damage = pending.slabDoubleIndex === index ? 2 : 1;
       shots.set(target, (shots.get(target) ?? 0) + damage);
     });
-    const shotDamage = damageGroup(next, shots, "shoot", shooter.id, "shots", choice);
+    const shotDamage = damageGroup(next, shots, "shoot", shooter.id, "shots", choices);
     if (!shotDamage) return next;
     const remainingDamage = new Map(shotDamage);
-    next.pending.shotTargets.forEach((targetId, index) => {
-      const requested = next.pending!.slabDoubleIndex === index ? 2 : 1;
+    pending.shotTargets.forEach((targetId, index) => {
+      const requested = pending.slabDoubleIndex === index ? 2 : 1;
       const actual = Math.min(requested, remainingDamage.get(targetId) ?? 0);
       remainingDamage.set(targetId, (remainingDamage.get(targetId) ?? 0) - actual);
       emitEffect(next, {
@@ -684,23 +703,23 @@ function resolvePending(game: GameState, choice?: { kind: "bart" | "pedro"; coun
         sourceId: shooter.id,
         targetId,
         amount: actual ? -actual : 0,
-        label: next.pending!.shots[index],
-        targetEffectId: next.pending!.shotTargetEffectIds[index],
+        label: pending.shots[index],
+        targetEffectId: pending.shotTargetEffectIds[index],
       });
     });
     if (next.winner || !shooter.alive) return finishTurn(next);
 
-    next.pending.shotsResolved = true;
+    pending.shotsResolved = true;
   }
 
-  if (!next.pending.beersResolved) {
-    if (next.pending.beerTargets.length < next.pending.beers) {
+  if (!pending.beersResolved) {
+    if (pending.beerTargets.length < pending.beers) {
       next.phase = "beer";
       return next;
     }
 
     const jesseBoosted = shooter.character.id === "jesse" && shooter.hp <= 4;
-    for (const [index, id] of next.pending.beerTargets.entries()) {
+    for (const [index, id] of pending.beerTargets.entries()) {
       const amount = id === shooter.id && jesseBoosted ? 2 : 1;
       if (amount === 2) emitSkill(next, shooter.id, "JESSE JONES • MỖI BIA HỒI 2 MÁU", id);
       heal(next, id, amount, "Bia", {
@@ -708,37 +727,38 @@ function resolvePending(game: GameState, choice?: { kind: "bart" | "pedro"; coun
         sourceId: shooter.id,
         targetId: id,
         label: "beer",
-        targetEffectId: next.pending.beerTargetEffectIds[index],
+        targetEffectId: pending.beerTargetEffectIds[index],
       });
     }
-    next.pending.beersResolved = true;
+    pending.beersResolved = true;
   }
 
-  if (shooter.character.id === "kit" && next.pending.kitRemaining > 0 && next.players.some((player) => player.alive && player.arrows > 0)) {
+  if (shooter.character.id === "kit" && pending.kitRemaining > 0 && next.players.some((player) => player.alive && player.arrows > 0)) {
     next.phase = "kit";
     return next;
   }
-  next.pending.kitRemaining = 0;
+  pending.kitRemaining = 0;
   return resolveGatling(next);
 }
 
-function resolveGatling(game: GameState, choice?: { kind: "bart" | "pedro"; count: number }) {
+function resolveGatling(game: GameState, choices: AbilityChoice[] = []) {
   if (!game.pending) return game;
   const next = clone(game);
   const shooter = next.players[next.turn];
+  const pending = next.pending!;
   const threshold = shooter.character.id === "willy" ? 2 : 3;
-  if (next.pending.gatlings >= threshold) {
-    if (shooter.character.id === "willy" && next.pending.gatlings === 2) {
+  if (pending.gatlings >= threshold) {
+    if (shooter.character.id === "willy" && pending.gatlings === 2) {
       emitSkill(next, shooter.id, "WILLY THE KID • GATLING CHỈ CẦN 2 BIỂU TƯỢNG", shooter.id);
     }
     note(next, `${shooter.name} kích hoạt Gatling!`);
     const targets = new Map(next.players.filter((player) => player.alive && player.id !== shooter.id).map((player) => [player.id, 1]));
-    const resolved = damageGroup(next, targets, "gatling", shooter.id, "gatling", choice);
+    const resolved = damageGroup(next, targets, "gatling", shooter.id, "gatling", choices);
     if (!resolved) return next;
     next.arrowSupply += shooter.arrows;
     shooter.arrows = 0;
   }
-  if (!next.winner && shooter.alive && shooter.character.id === "suzy" && next.pending.shots.length === 0) {
+  if (!next.winner && shooter.alive && shooter.character.id === "suzy" && pending.shots.length === 0) {
     heal(next, shooter.id, 2, "Suzy Lafayette", {
       kind: "skill",
       sourceId: shooter.id,
@@ -753,13 +773,17 @@ export function chooseAbility(game: GameState, count: number) {
   if (game.phase !== "ability" || !game.decision) return game;
   const next = clone(game);
   const decision = next.decision!;
-  const choice = { kind: decision.kind, count: Math.max(0, Math.min(decision.max, count)) };
+  const choices = [...decision.choices, {
+    kind: decision.kind,
+    playerId: decision.playerId,
+    count: Math.max(0, Math.min(decision.max, count)),
+  }];
   next.decision = null;
-  if (decision.resume === "shots") return resolvePending(next, choice);
-  if (decision.resume === "gatling") return resolveGatling(next, choice);
+  if (decision.resume === "shots") return resolvePending(next, choices);
+  if (decision.resume === "gatling") return resolveGatling(next, choices);
 
   next.phase = next.players[next.turn].human ? "roll" : "bot";
-  const resolved = damageGroup(next, new Map(decision.damages), decision.cause, decision.sourceId, "dynamite", choice);
+  const resolved = damageGroup(next, new Map(decision.damages), decision.cause, decision.sourceId, "dynamite", choices);
   if (!resolved) return next;
   if (!next.players[next.turn].alive) return finishTurn(next);
   return beginResolution(next);
